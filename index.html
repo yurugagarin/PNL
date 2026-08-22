@@ -146,6 +146,27 @@ body.mob .li-a{font-size:14px;font-weight:600}
 body.mob .empty{padding:26px 4px;text-align:center;font-size:13px;color:var(--m5);line-height:1.5}
 body.mob .ghost,.mobscope .ghost{margin-top:16px;padding:15px;border-radius:18px;background:var(--m1);text-align:center;font-size:14px;font-weight:600;color:var(--m6);width:100%}
 body.mob .ghost:active,.mobscope .ghost:active{background:var(--m2)}
+body.mob .hero-g.three>div{padding:10px 11px}
+body.mob .hero-g.three .v{font-size:14.5px}
+body.mob .hero-g.three .k{font-size:10.5px}
+body.mob .tot{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:14px;background:rgba(47,122,91,.09)}
+body.mob .tot .a{font-size:12px;font-weight:600;color:#27614a}
+body.mob .tot .b{font-size:20px;font-weight:700;letter-spacing:-.02em;color:#27614a}
+body.mob .split{display:flex;justify-content:space-between;margin-top:8px;font-size:11.5px;font-weight:600;color:var(--m5)}
+body.mob .ffab{position:absolute;right:18px;bottom:calc(84px + var(--safeB));width:56px;height:56px;border-radius:999px;
+  background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;z-index:25;
+  box-shadow:0 6px 20px rgba(47,122,91,.38),0 2px 6px rgba(0,0,0,.12);transition:transform .14s}
+body.mob .ffab:active{transform:scale(.9)}
+body.mob .ffab svg{width:25px;height:25px}
+@media(prefers-reduced-motion:reduce){body.mob .ffab{transition:none}}
+body.mob .seg,.mobscope .seg{margin-top:10px;display:flex;gap:6px;background:var(--m1);padding:4px;border-radius:14px}
+body.mob .seg button,.mobscope .seg button{flex:1;padding:9px;border-radius:11px;font-size:12.5px;font-weight:700;color:var(--m5)}
+body.mob .seg button.on,.mobscope .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+body.mob .gpick{margin-top:10px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+body.mob .gpick button{display:flex;align-items:center;gap:9px;padding:12px 12px;border-radius:14px;background:var(--card);font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.05);text-align:left}
+body.mob .gpick button.on{background:var(--ink);color:var(--paper)}
+body.mob .gpick i{width:10px;height:10px;border-radius:999px;flex:none}
+body.mob .li:active{background:#faf9f7}
 body.mob .tabs{position:absolute;left:0;right:0;bottom:0;padding:8px 16px calc(14px + var(--safeB));background:rgba(246,245,242,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid rgba(27,26,24,.07);display:flex;gap:8px;z-index:30}
 body.mob .tab{flex:1;padding:11px;border-radius:16px;text-align:center;font-size:12.5px;font-weight:700;color:var(--m5)}
 body.mob .tab.on{background:var(--ink);color:var(--paper)}
@@ -867,11 +888,37 @@ function refreshSummary(){
    9 · MOBİL GÖRÜNÜMÜ  (telefon tasarımı — salt okunur)
    ════════════════════════════════════════════════════════════ */
 var SVG={
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   left:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
   right:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>'
 };
-var EXP_SHADES=[INK,RUST,'rgba(27,26,24,.55)','rgba(180,98,47,.6)','rgba(27,26,24,.35)','rgba(180,98,47,.35)','rgba(27,26,24,.22)'];
-var INC_SHADES=[GREEN,'rgba(47,122,91,.62)','rgba(47,122,91,.42)','rgba(47,122,91,.28)','rgba(47,122,91,.18)'];
+/* her kategoriye kendi pastel rengi */
+var PASTEL={
+  'Gelir':'#7FA98C','Yatırım Satışları':'#8FB2A6','Ev':'#8FAFCB','Günlük':'#E2A57E',
+  'Krediler':'#A79CC9','Sabit':'#86BDBD','Değişken':'#D6A0B6','Realize K/Z':'#C98F82'
+};
+var PASTEL_POOL=['#8FAFCB','#E2A57E','#A79CC9','#86BDBD','#D6A0B6','#B5B078','#C98F82','#96B8A4','#CBA98F','#9BAECF'];
+function gcolor(g){
+  if(PASTEL[g.name]) return PASTEL[g.name];
+  var i=state.groups.indexOf(g); if(i<0) i=0;
+  return PASTEL_POOL[i%PASTEL_POOL.length];
+}
+function initialOf(name){
+  var t=String(name||'').trim();
+  if(!t) return '·';
+  return t.charAt(0).toLocaleUpperCase('tr');
+}
+/* o ay hisseye giden nakit (alım − satış) */
+function stockFlow(m){
+  var v=0;
+  state.groups.forEach(function(g){
+    if(g.type==='realize') return;
+    var sign=g.type==='revenue'?-1:1;
+    g.items.forEach(function(it){ if(it.invest==='hisse') v+=sign*(+it.values[m]||0); });
+  });
+  return v;
+}
+function clampPct(x){ return Math.max(0,Math.min(100,Math.round(x))); }
 
 function buildMobShell(){
   return '<div class="hdr">'+
@@ -889,6 +936,7 @@ function buildMobShell(){
       '<button class="tab" id="tabAy">Ay</button>'+
       '<button class="tab" id="tabYil">Yıl</button>'+
     '</div>'+
+    '<button class="ffab" id="mAdd" aria-label="Yeni kalem" style="display:none">'+SVG.plus+'</button>'+
     '<div id="sheetHost"></div>'+
     '<div id="toastHost"></div>';
 }
@@ -901,6 +949,9 @@ function renderMob(){
   document.getElementById('tabYil').onclick=function(){ view.tab='yil'; renderMob(); };
   document.getElementById('mSync').onclick=openSyncSheet;
   paintSync();
+  var fab=document.getElementById('mAdd');
+  fab.style.display=(view.tab==='ay'?'flex':'none');
+  fab.onclick=function(){ openItemSheet(null,null); };
   if(view.tab==='ay') mobMonth(); else mobYear();
 }
 
@@ -935,16 +986,19 @@ function mobMonth(){
     view.month=nm; renderMob();
   });
 
-  var netM=c.saving[m], yearNet=yearSum(c.saving);
+  var netM=c.saving[m], yearNet=yearSum(c.saving), stockM=stockFlow(m);
+
+  /* hero — nakit net + bu ay hisseye ayrılan */
   f.appendChild(h('<div class="hero">'+
-    '<div class="hero-r"><div class="hero-l">'+MONTHS_L[m]+' net</div><div class="hero-l">'+y+' neti</div></div>'+
+    '<div class="hero-r"><div class="hero-l">'+MONTHS_L[m]+' · nakit</div><div class="hero-l">'+y+' neti</div></div>'+
     '<div class="hero-b">'+
       '<div class="hero-big tnum">'+signedM(netM)+'</div>'+
       '<div class="hero-sm tnum" style="color:'+(yearNet>=0?'#7fd1a6':'#e5a08e')+'">'+signedM(yearNet)+'</div>'+
     '</div>'+
-    '<div class="hero-g">'+
+    '<div class="hero-g three">'+
       '<div><div class="k">Gelir</div><div class="v tnum">'+fmtM(c.revenue[m])+'</div></div>'+
       '<div><div class="k">Gider</div><div class="v tnum">'+fmtM(c.cost[m])+'</div></div>'+
+      '<div><div class="k">Hisseye</div><div class="v tnum" style="color:'+(stockM>0?'#8fd2e8':'rgba(246,245,242,.75)')+'">'+(stockM>0?'+':'')+fmtM(stockM)+'</div></div>'+
     '</div>'+
   '</div>'));
 
@@ -965,69 +1019,75 @@ function mobMonth(){
       '<div style="font-size:12.5px;font-weight:600;color:var(--m5)">Aç ›</div>'+
     '</div>'+
     '<div class="rowsm" style="margin-top:4px">'+
-      '<div>Açılış + yıl neti</div><div class="tnum" style="color:'+(c.balance[11]>=0?GREEN:RUST)+';font-weight:700">'+fmtM(c.balance[11])+'</div>'+
+      '<div>Yıl sonu nakit</div><div class="tnum" style="color:'+(c.balance[11]>=0?GREEN:RUST)+';font-weight:700">'+fmtM(c.balance[11])+'</div>'+
     '</div>'+
     '<div class="spark">'+bars+'</div>'+
     '<div class="sparkx">'+MONTHS.map(function(n,i){ return '<div style="color:'+(i===m?INK:'')+'">'+n[0]+'</div>'; }).join('')+'</div>'+
     (lows.length
-      ? '<div class="warn">'+MONTHS_L[lows[0].m]+' ayında bakiye '+fmtM(lows[0].bal)+'\u2019ya düşüyor. Önceki aylardan biriktirmen gereken tutar: '+fmtM(Math.abs(lowest.bal-(STORE.alert||0)))+'.</div>'
-      : '<div class="ok">Yıl boyunca bakiye hiç '+fmtM(STORE.alert||0)+' altına düşmüyor.</div>')+
+      ? '<div class="warn">'+MONTHS_L[lows[0].m]+' ayında nakit '+fmtM(lows[0].bal)+'\u2019ya düşüyor. Önceki aylardan biriktirmen gereken tutar: '+fmtM(Math.abs(lowest.bal-(STORE.alert||0)))+'.</div>'
+      : '<div class="ok">Yıl boyunca nakit hiç '+fmtM(STORE.alert||0)+' altına düşmüyor.</div>')+
   '</button>');
   ovc.querySelector('button').onclick=function(){ view.tab='yil'; renderMob(); };
   f.appendChild(ovc);
 
-  /* tasarruf kartı */
+  /* ── TOPLAM VARLIK: nakit + hisse ── */
+  var cashM=c.balance[m],  stkM=investSplit(m).hisse,  totM=cashM+stkM;
+  var cashY=c.balance[11], stkY=investSplit(11).hisse, totY=cashY+stkY;
   var goal=STORE.goal||0;
-  var pct=goal>0?Math.max(0,Math.min(100,Math.round(c.balance[m]/goal*100))):0;
-  var pctEnd=goal>0?Math.max(0,Math.min(100,Math.round(c.balance[11]/goal*100))):0;
+  var pct=goal>0?clampPct(totM/goal*100):0;
+  var pctEnd=goal>0?clampPct(totY/goal*100):0;
+
   var gc=h('<div class="card">'+
-    '<div class="hero-r"><div class="sh-t" style="font-size:14px">Tasarruf</div>'+
+    '<div class="hero-r"><div class="sh-t" style="font-size:14px">Toplam varlık</div>'+
       '<button class="tnum" style="font-size:12.5px;font-weight:600;color:var(--m5)" id="goalEdit">Hedef '+fmtM(goal)+' ›</button></div>'+
     '<div class="tsav">'+
-      '<div><div class="k">'+MONTHS_L[m]+' ayında</div>'+
-        '<div class="v tnum" style="color:'+(netM>=0?GREEN:RUST)+'">'+signedM(netM)+'</div></div>'+
-      '<div><div class="k">'+MONTHS_L[m]+' sonu bakiye</div>'+
-        '<div class="v tnum" style="color:'+(c.balance[m]>=0?INK:RUST)+'">'+fmtM(c.balance[m])+'</div></div>'+
+      '<div><div class="k">'+MONTHS_L[m]+' sonu nakit</div>'+
+        '<div class="v tnum" style="color:'+(cashM>=0?INK:RUST)+'">'+fmtM(cashM)+'</div></div>'+
+      '<div><div class="k">'+MONTHS_L[m]+' sonu hisse</div>'+
+        '<div class="v tnum" style="color:'+C_HISSE+'">'+fmtM(stkM)+'</div></div>'+
     '</div>'+
+    '<div class="tot"><span class="a">'+MONTHS_L[m]+' sonu toplam</span><span class="b tnum">'+fmtM(totM)+'</span></div>'+
     '<button class="opn" id="openEdit">Açılış bakiyesi '+fmtM(state.opening)+' dahil · değiştir ›</button>'+
-    '<div class="bar" style="margin-top:16px"><div style="width:'+pct+'%"></div></div>'+
+    '<div class="bar" style="margin-top:14px"><div style="width:'+pct+'%"></div></div>'+
     '<div class="rowsm"><div>Hedefin '+pct+'%\u2019i</div><div class="tnum">'+fmtM(goal)+'</div></div>'+
     '<div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(27,26,24,.07);display:flex;align-items:center;gap:10px">'+
-      '<div style="font-size:12px;color:var(--m5);flex:1;line-height:1.4">Girdiğin '+y+' verileriyle<br>yıl sonu bakiye</div>'+
+      '<div style="font-size:12px;color:var(--m5);flex:1;line-height:1.4">'+y+' sonunda<br>nakit + hisse</div>'+
       '<div style="text-align:right">'+
-        '<div class="tnum" style="font-size:17px;font-weight:700;color:'+(c.balance[11]>=goal?GREEN:RUST)+'">'+fmtM(c.balance[11])+'</div>'+
-        '<div style="font-size:11px;font-weight:600;color:var(--m4)">hedefin '+pctEnd+'%\u2019i</div>'+
+        '<div class="tnum" style="font-size:19px;font-weight:700;color:'+(totY>=goal&&goal>0?GREEN:INK)+'">'+fmtM(totY)+'</div>'+
+        '<div style="font-size:11px;font-weight:600;color:var(--m4)">'+fmtM(cashY)+' nakit · '+fmtM(stkY)+' hisse</div>'+
       '</div>'+
-    '</div></div>');
+    '</div>'+
+    (goal>0?'<div class="split"><div>Yıl sonunda hedefin '+pctEnd+'%\u2019i</div><div></div></div>':'')+
+  '</div>');
   gc.querySelector('#goalEdit').onclick=openGoal;
   gc.querySelector('#openEdit').onclick=openOpening;
   f.appendChild(gc);
 
-  /* kategoriler = web grupları */
+  /* kategoriler — her grup kendi pastel renginde */
   f.appendChild(h('<div class="sechd"><div class="t">Kategoriler · '+MONTHS_L[m]+'</div>'+
     '<div class="m">'+MONTHS[m]+' '+y+'</div></div>'));
 
-  function drawCats(type,total,shades,emptyMsg,label){
+  function drawCats(type,total,emptyMsg,label){
     var rows=state.groups.filter(function(g){ return g.type===type; })
-      .map(function(g){ return {name:g.name,val:c.sub[g.id][m]}; })
+      .map(function(g){ return {g:g,name:g.name,val:c.sub[g.id][m]}; })
       .filter(function(r){ return Math.abs(r.val)>0.5; })
       .sort(function(a,b){ return Math.abs(b.val)-Math.abs(a.val); });
     var cw=document.createElement('div'); cw.style.marginTop='10px';
     cw.appendChild(h('<div class="lab" style="margin-top:2px;margin-bottom:8px">'+label+'</div>'));
     if(!rows.length){ cw.appendChild(h('<div class="empty">'+emptyMsg+'</div>')); return cw; }
-    rows.forEach(function(r,i){
+    rows.forEach(function(r){
       var p=total?Math.round(Math.abs(r.val)/Math.abs(total)*100):0;
       cw.appendChild(h('<div class="catrow">'+
         '<div class="cat-h"><div class="cat-n">'+esc(r.name)+'</div>'+
         '<div class="cat-a tnum">'+fmtM(r.val)+'</div><div class="cat-p">'+p+'%</div></div>'+
-        '<div class="cat-b"><div style="width:'+p+'%;background:'+shades[i%shades.length]+'"></div></div></div>'));
+        '<div class="cat-b"><div style="width:'+p+'%;background:'+gcolor(r.g)+'"></div></div></div>'));
     });
     return cw;
   }
-  f.appendChild(drawCats('cost',c.cost[m],EXP_SHADES,'Bu ay gider kaydı yok.','Gider'));
-  f.appendChild(drawCats('revenue',c.revenue[m],INC_SHADES,'Bu ay gelir kaydı yok.','Gelir'));
+  f.appendChild(drawCats('cost',c.cost[m],'Bu ay gider kaydı yok.','Gider'));
+  f.appendChild(drawCats('revenue',c.revenue[m],'Bu ay gelir kaydı yok.','Gelir'));
 
-  /* o ayın kalemleri */
+  /* o ayın kalemleri — dokununca düzenlenir */
   var items=[];
   state.groups.forEach(function(g){
     g.items.forEach(function(it){
@@ -1038,12 +1098,12 @@ function mobMonth(){
   f.appendChild(h('<div class="sechd"><div class="t">'+MONTHS_L[m]+' kalemleri</div><div class="m">'+items.length+'</div></div>'));
   var list=document.createElement('div'); list.className='list';
   if(!items.length){
-    list.innerHTML='<div class="empty">Bu ayda kayıtlı kalem yok.<br>Girişleri bilgisayardan yapıyorsun.</div>';
+    list.innerHTML='<div class="empty">Bu ayda kayıtlı kalem yok.<br>Sağ alttaki + ile ekleyebilirsin.</div>';
   } else {
+    var rank=function(g){ return g.type==='revenue'?0:(g.type==='cost'?1:2); };
     var order=state.groups.filter(function(g){
       return items.some(function(x){ return x.g.id===g.id; });
     }).sort(function(a,b){
-      var rank=function(g){ return g.type==='revenue'?0:(g.type==='cost'?1:2); };
       if(rank(a)!==rank(b)) return rank(a)-rank(b);
       return Math.abs(c.sub[b.id][m])-Math.abs(c.sub[a.id][m]);
     });
@@ -1052,18 +1112,19 @@ function mobMonth(){
         .sort(function(a,b){ return Math.abs(b.v)-Math.abs(a.v); });
       var tot=rows.reduce(function(t,x){ return t+x.v; },0);
       var inc=g.type==='revenue';
-      list.appendChild(h('<div class="lgh"><div class="g">'+esc(g.name)+(inc?' · gelir':'')+'</div>'+
+      var col=gcolor(g);
+      list.appendChild(h('<div class="lgh"><div class="g" style="color:'+col+'">'+esc(g.name)+(inc?' · gelir':'')+'</div>'+
         '<div class="s tnum" style="color:'+(inc?GREEN:'var(--m5)')+'">'+(inc?'+':'')+fmtM(tot)+'</div></div>'));
       rows.forEach(function(x){
         var neg=x.v<0;
-        var col=inc?GREEN:(g.type==='realize'?(neg?RUST:GREEN):INK);
-        var badge=x.it.invest==='hisse'?C_HISSE:(x.it.invest==='altin'?C_ALTIN:(inc?GREEN:'rgba(27,26,24,.45)'));
-        var mark=x.it.invest==='hisse'?'H':(x.it.invest==='altin'?'A':MONTHS[m][0]);
-        list.appendChild(h('<div class="li">'+
-          '<div class="li-d" style="background:'+badge+';color:#fff">'+esc(mark)+'</div>'+
+        var amtCol=inc?GREEN:(g.type==='realize'?(neg?RUST:GREEN):INK);
+        var node=h('<button class="li">'+
+          '<div class="li-d" style="background:'+col+';color:#fff;font-size:13px">'+esc(initialOf(x.it.name))+'</div>'+
           '<div style="flex:1;min-width:0"><div class="li-n">'+esc(x.it.name)+'</div>'+
           '<div class="li-s">'+esc(g.name)+'</div></div>'+
-          '<div class="li-a tnum" style="color:'+col+'">'+(inc?'+':'')+fmtM(x.v)+'</div></div>'));
+          '<div class="li-a tnum" style="color:'+amtCol+'">'+(inc?'+':'')+fmtM(x.v)+'</div></button>');
+        node.querySelector('button').onclick=function(){ openItemSheet(g.id,x.it.id); };
+        list.appendChild(node);
       });
     });
   }
@@ -1157,8 +1218,8 @@ function mobYear(){
       '<div style="flex:1;display:flex;flex-direction:column;gap:14px">'+
         '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:3px;background:'+C_HISSE+'"></span><span style="font-weight:700;font-size:13px">Hisse</span></div>'+
           '<div class="tnum" style="font-size:17px;font-weight:700;margin-top:2px">'+fmtM(inv.hisse)+' <span style="font-size:12px;font-weight:600;color:var(--m4)">· '+Math.round(hFrac*100)+'%</span></div></div>'+
-        '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:3px;background:'+C_ALTIN+'"></span><span style="font-weight:700;font-size:13px">Altın</span></div>'+
-          '<div class="tnum" style="font-size:17px;font-weight:700;margin-top:2px">'+fmtM(inv.altin)+' <span style="font-size:12px;font-weight:600;color:var(--m4)">· '+Math.round(aFrac*100)+'%</span></div></div>'+
+        (inv.altin>0.5?'<div><div style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:3px;background:'+C_ALTIN+'"></span><span style="font-weight:700;font-size:13px">Altın</span></div>'+
+          '<div class="tnum" style="font-size:17px;font-weight:700;margin-top:2px">'+fmtM(inv.altin)+' <span style="font-size:12px;font-weight:600;color:var(--m4)">· '+Math.round(aFrac*100)+'%</span></div></div>':'')+
       '</div>'+
     '</div>'+
   '</div>'));
@@ -1167,7 +1228,7 @@ function mobYear(){
   f.appendChild(h('<div class="sechd"><div class="t">Kategoriler · '+y+'</div><div class="m">yıl toplamı</div></div>'));
   var cw=document.createElement('div'); cw.style.marginTop='10px';
   state.groups.filter(function(g){ return g.type==='cost'; })
-    .map(function(g){ return {name:g.name,val:yearSum(c.sub[g.id])}; })
+    .map(function(g){ return {g:g,name:g.name,val:yearSum(c.sub[g.id])}; })
     .filter(function(r){ return Math.abs(r.val)>0.5; })
     .sort(function(a,b){ return b.val-a.val; })
     .forEach(function(r,i){
@@ -1175,7 +1236,7 @@ function mobYear(){
       cw.appendChild(h('<div class="catrow">'+
         '<div class="cat-h"><div class="cat-n">'+esc(r.name)+'</div>'+
         '<div class="cat-a tnum">'+fmtM(r.val)+'</div><div class="cat-p">'+p+'%</div></div>'+
-        '<div class="cat-b"><div style="width:'+p+'%;background:'+EXP_SHADES[i%EXP_SHADES.length]+'"></div></div></div>'));
+        '<div class="cat-b"><div style="width:'+p+'%;background:'+gcolor(r.g)+'"></div></div></div>'));
     });
   f.appendChild(cw);
 
@@ -1257,6 +1318,108 @@ function openOpening(){
     setOpening(s.querySelector('#ov').value);
     closeSheet(); renderMob(); toast('Açılış bakiyesi kaydedildi');
   };
+}
+
+/* ---------- MOBİL: kalem ekle / düzenle ---------- */
+function defaultGroupId(){
+  var g=state.groups.filter(function(x){ return x.name==='Değişken'; })[0]
+      || state.groups.filter(function(x){ return x.type==='cost'; })[0]
+      || state.groups[0];
+  return g?g.id:null;
+}
+function mobSaveItem(orig,next){
+  var target=find(next.gid); if(!target) return;
+  var it=null;
+  if(orig&&orig.iid){
+    var og=find(orig.gid);
+    it=og&&findItem(og,orig.iid);
+    if(it&&og.id!==target.id){
+      og.items=og.items.filter(function(x){ return x.id!==it.id; });
+      target.items.push(it);
+    }
+  }
+  /* yeni kalem eklerken aynı adlı kalem varsa onu güncelle, kopya oluşturma */
+  if(!it){
+    var key=String(next.name||'').trim().toLocaleLowerCase('tr');
+    it=target.items.filter(function(x){ return String(x.name||'').trim().toLocaleLowerCase('tr')===key; })[0]||null;
+  }
+  if(!it){ it={id:uid('i'),name:'',values:new Array(12).fill(0)}; target.items.push(it); }
+  it.name=String(next.name||'').trim()||'Yeni kalem';
+  if(next.every){ for(var i=next.month;i<12;i++) it.values[i]=next.amount; }
+  else it.values[next.month]=next.amount;
+  touched(); renderMob();
+}
+function mobDeleteItem(gid,iid){
+  var g=find(gid); if(!g) return;
+  g.items=g.items.filter(function(x){ return x.id!==iid; });
+  touched(); renderMob();
+}
+function openItemSheet(gid,iid){
+  var m=view.month;
+  var g=gid?find(gid):null;
+  var it=(g&&iid)?findItem(g,iid):null;
+  var draft={
+    gid:g?g.id:defaultGroupId(),
+    name:it?it.name:'',
+    amount:it?String(it.values[m]||''):'',
+    every:false
+  };
+  var picks=state.groups.map(function(x){
+    return '<button data-g="'+x.id+'" class="'+(x.id===draft.gid?'on':'')+'">'+
+      '<i style="background:'+gcolor(x)+'"></i><span>'+esc(x.name)+'</span></button>';
+  }).join('');
+
+  var inner=h('<div>'+
+    '<div class="grab"></div>'+
+    '<div class="sh-h"><div class="sh-t">'+(it?'Kalemi düzenle':'Yeni kalem')+' · '+MONTHS_L[m]+'</div>'+
+      '<button class="sh-x">Vazgeç</button></div>'+
+    '<div class="field"><input class="inp" id="itName" placeholder="Kira, market, hisse…" value="'+esc(draft.name)+'" autocomplete="off"></div>'+
+    '<div class="field"><input class="inp tnum" id="itAmt" inputmode="decimal" placeholder="0" value="'+esc(draft.amount)+'"></div>'+
+    '<div class="lab">Kategori</div>'+
+    '<div class="gpick" id="itGrp">'+picks+'</div>'+
+    '<div class="lab">Ne zaman</div>'+
+    '<div class="seg" id="itSeg">'+
+      '<button data-e="0" class="on">Sadece bu ay</button>'+
+      '<button data-e="1">Bu aydan itibaren her ay</button>'+
+    '</div>'+
+    '<button class="save" id="itSave">Kaydet</button>'+
+    (it?'<button class="del" id="itDel">Kalemi tamamen sil</button>':'')+
+    '<div class="note">Tutarı 0 yazarsan kalem bu aydan kalkar ama diğer aylarda durur. Zarar girmek için başına eksi koy.</div>'+
+  '</div>');
+
+  var sh=sheet(inner);
+  sh.querySelector('.sh-x').onclick=closeSheet;
+
+  sh.querySelectorAll('#itGrp button').forEach(function(b){
+    b.onclick=function(){
+      draft.gid=b.getAttribute('data-g');
+      sh.querySelectorAll('#itGrp button').forEach(function(x){ x.className=''; });
+      b.className='on';
+    };
+  });
+  sh.querySelectorAll('#itSeg button').forEach(function(b){
+    b.onclick=function(){
+      draft.every=b.getAttribute('data-e')==='1';
+      sh.querySelectorAll('#itSeg button').forEach(function(x){ x.className=''; });
+      b.className='on';
+    };
+  });
+  sh.querySelector('#itSave').onclick=function(){
+    var nm=sh.querySelector('#itName').value.trim();
+    if(!nm){ toast('Kaleme bir ad ver'); return; }
+    mobSaveItem(it?{gid:g.id,iid:it.id}:null,{
+      gid:draft.gid, name:nm,
+      amount:num(sh.querySelector('#itAmt').value),
+      month:m, every:draft.every
+    });
+    closeSheet(); toast(it?'Güncellendi':'Eklendi');
+  };
+  if(it){
+    sh.querySelector('#itDel').onclick=function(){
+      mobDeleteItem(g.id,it.id);
+      closeSheet(); toast('Silindi');
+    };
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
