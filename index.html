@@ -1153,12 +1153,15 @@ function rowSpec(c){
   R.cost={arr:c.cost,year:yearSum(c.cost)};
   R.saving={arr:c.saving,year:yearSum(c.saving),col:posNeg};
   R.invNet={arr:c.invNet,year:yearSum(c.invNet)};
+  var flow=c.saving.map(function(v,m){ return v-c.invNet[m]; });
+  R.flow={arr:flow,year:yearSum(flow),col:posNeg,signed:true};
   R.bal={arr:c.balance,year:c.balance[11],col:function(v){ return v<0?'#ff9b8e':'#e3c98a'; },ycol:function(){ return '#e3a23f'; }};
   R.held={arr:c.held,year:c.held[11]};
   R.wealth={arr:c.wealth,year:c.wealth[11],col:function(v){ return v<0?'#ef4444':'#3a342c'; }};
   return R;
 }
 function rkText(R,v,isYear){
+  if(R.signed) return (v>0.005?'+':'')+(isYear?fmt(v):fmtPlain(v));
   if(isYear) return R.plainYear?fmtPlain(v):fmt(v);
   return (R.blank&&!v)?'':fmtPlain(v);
 }
@@ -1174,7 +1177,7 @@ function buildTop(){
     {label:'Toplam Gider',value:fmt(totCost),sub:'sabit '+fmt(ytd(c.fixed))+' · değişken '+fmt(ytd(c.variable)),top:'#ef5a1e',valColor:'#3a342c'},
     {label:'Net Tasarruf',value:fmt(netSav),sub:(totRev>0?'gelirin %'+rate+'’i · ':'')+'yatırım gider sayılmaz',top:posNeg(netSav),valColor:posNeg(netSav)},
     {label:'Yatırıma Giden',value:fmt(invY),sub:ytdLabel+(rz?' · realize '+(rz>0?'+':'')+fmt(rz):''),top:C_BLUE,valColor:C_BLUE},
-    {label:'Banka (Nakit)',value:fmt(c.balance[lm]),sub:nowLbl+(cm>=0?' · yıl sonu '+fmt(c.balance[11]):''),top:'#f4ad15',valColor:(c.balance[lm]<0?'#ef4444':'#3a342c')},
+    {label:'Banka (Nakit)',value:fmt(c.balance[lm]),sub:'açılış '+fmt(state.opening)+' · '+(cm>=0?'Oca–'+MONTHS[cm]+' ':'yıl içinde ')+((c.balance[lm]-state.opening)>=0?'+':'')+fmt(c.balance[lm]-state.opening),top:'#f4ad15',valColor:(c.balance[lm]<0?'#ef4444':'#3a342c')},
     {label:'Toplam Varlık',value:fmt(c.wealth[lm]),sub:'nakit + yatırım'+(cm>=0?' · yıl sonu '+fmt(c.wealth[11]):''),top:'#3a342c',valColor:'#3a342c'}
   ];
   var kpiHTML=kpis.map(function(k){
@@ -1411,7 +1414,9 @@ function buildTableOrdered(){
     body+=band('Yatırım','gider değil — bankadan çıkar, varlığında kalır',C_BLUE);
     buys.forEach(function(g){ body+=groupBlock(g); });
   }
-  body+=band('Param ne durumda','ay sonu','#3a342c');
+  var yi=YEARS.indexOf(state.year), autoOp=(yi>0&&STORE.years[state.year].opening==null);
+  body+=band('Param ne durumda','açılış '+fmt(state.opening)+(autoOp?' ('+YEARS[yi-1]+' sonundan devir)':'')+' + her ay bankaya kalan = Banka','#3a342c');
+  body+=sumRow('flow','Bu ay bankaya kalan',{bg:'#f6efe2',fg:'#5a5142',lfg:'#3a342c',label:'font-size:12.5px;'});
   body+=sumRow('bal','Banka (Nakit)',{bg:'#3a342c',lfg:'#f3ecdf',ybg:'#3a342c',border:'border-bottom:1px solid #4a433a;'});
   body+=sumRow('held','Yatırımda Kalan',{bg:'#2f4a5c',fg:'#a9d3ef',lfg:'#e6f2fa',border:'border-bottom:1px solid #3d5a6e;'});
   body+=sumRow('wealth','Toplam Varlık',{bg:'#f4e3b8',lfg:'#3a342c',label:'font-size:13.5px;',last:true});
