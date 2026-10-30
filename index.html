@@ -1299,8 +1299,8 @@ function buildTableOrdered(){
       '</div>'+
       MONTHS.map(function(_,m){
         var w=planWeeks(y,m), amt=w*(P.weekly||0);
-        return '<div title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' × '+fmtPlain(P.weekly||0)+'" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;gap:5px;font-size:11.5px;color:#4f7fa3;'+hl(m))+'">'+
-          '<span style="font-size:10px;color:#93b3cb">'+w+'hf</span><span>'+fmtPlain(amt)+'</span></div>';
+        return '<div data-act="plan-cell" data-m="'+m+'" data-plan="'+m+'" title="Plan: '+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' × '+fmtPlain(P.weekly||0)+' · tıkla → '+esc(it.name)+'’ye yazmadan önce sorar" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:4px;font-size:11.5px;color:#4f7fa3;'+hl(m))+'">'+
+          '<span style="font-size:10px;color:#93b3cb;pointer-events:none">'+w+'hf</span><span style="pointer-events:none">'+fmtPlain(amt)+'</span>'+planStatus(it,m)+'</div>';
       }).join('')+
       '<div style="'+totCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;font-size:11.5px;color:#4f7fa3;font-weight:700')+'">'+fmtPlain(MONTHS.reduce(function(t,_,m){ return t+planAmount(y,m); },0))+'</div>'+
     '</div>';
@@ -1493,6 +1493,14 @@ function refreshSummary(){
     var col=isY&&S.ycol?S.ycol(v):(S.col?S.col(v):null);
     if(col) el.style.color=col;
   }
+  var pi=planItem();
+  if(pi){
+    var pc=document.querySelectorAll('[data-plan]');
+    for(var j=0;j<pc.length;j++){
+      var old=pc[j].querySelector('[data-pst]'); if(old) old.remove();
+      pc[j].insertAdjacentHTML('beforeend',planStatus(pi.it,+pc[j].getAttribute('data-plan')));
+    }
+  }
   var on=document.getElementById('openNote');
   if(on&&state.year!==YEARS[0]){
     var auto=STORE.years[state.year].opening==null;
@@ -1513,6 +1521,24 @@ function planApply(){
   for(var k=from;k<12;k++) pi.it.values[k]=planAmount(state.year,k);
   touched(); render();
   webToast('Plan '+MONTHS[from]+'–Ara için uygulandı');
+}
+/* planlanan ↔ yatırılan: eşitse ✓, değilse fark (+ fazla / − eksik yatırılmış) */
+function planStatus(it,m){
+  var amt=planAmount(state.year,m), d=(+it.values[m]||0)-amt;
+  if(Math.abs(d)<0.005) return '<span data-pst style="pointer-events:none;color:#16a85a;font-weight:700">✓</span>';
+  return '<span data-pst style="pointer-events:none;color:#c2410c;font-size:10.5px;font-weight:700" title="yatırılan − plan">'+(d>0?'+':'−')+fmtPlain(Math.abs(d))+'</span>';
+}
+function planCell(m){
+  var pi=planItem(); if(!pi) return;
+  var amt=planAmount(state.year,m), cur=+pi.it.values[m]||0;
+  if(Math.abs(cur-amt)<0.005){ webToast(MONTHS_L[m]+': '+pi.it.name+' zaten planla aynı ('+fmtPlain(amt)+')',false); return; }
+  if(!confirm(MONTHS_L[m]+' '+state.year+' · '+pi.it.name+'\n\nŞu an yatırılan: '+fmtPlain(cur)+'\nPlan ('+planWeeks(state.year,m)+' hafta × '+fmtPlain(STORE.plan.weekly)+'): '+fmtPlain(amt)+'\n\n'+pi.it.name+' hücresine '+fmtPlain(amt)+' yazılsın mı?')) return;
+  webSnap(pi.it.name+' · '+MONTHS[m]+' plan');
+  pi.it.values[m]=amt;
+  var inp=document.querySelector('input[data-act="cell"][data-i="'+pi.it.id+'"][data-m="'+m+'"]');
+  if(inp) inp.value=amt?String(amt):'';
+  touched(); refreshSummary();
+  webToast(pi.it.name+' · '+MONTHS_L[m]+': '+fmtPlain(cur)+' → '+fmtPlain(amt));
 }
 function setPayday(m,val){
   var k=payKey(state.year,m);
@@ -2699,6 +2725,7 @@ root.addEventListener('click',function(e){
   else if(act==='plan-set') openPlanModal();
   else if(act==='plan-apply') planApply();
   else if(act==='payday-cell') pickPayday(t,+t.getAttribute('data-m'));
+  else if(act==='plan-cell') planCell(+t.getAttribute('data-m'));
   else if(act==='payday-reset'){ if(confirm(state.year+' için işaretlediğin maaş günleri silinsin mi? (Varsayılan '+STORE.plan.payday+' kullanılır)')){ webSnap('maaş günleri sıfırlandı'); Object.keys(STORE.paydays).forEach(function(k){ if(k.indexOf(state.year+'-')===0) delete STORE.paydays[k]; }); touched(); render(); } }
   else if(act==='gold'){ webSnap('altın görünümü'); STORE.showGold=!STORE.showGold; touched(); render(); }
   else if(act==='undo') webUndo();
