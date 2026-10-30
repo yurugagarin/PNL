@@ -498,7 +498,9 @@ function ensureGroups(groups){
    ════════════════════════════════════════════════════════════ */
 var SKEY='pnl_store_v3';
 var STORE={updatedAt:0,years:{},goal:12000,alert:0,schema:4,
-  plan:{weekly:200,weekday:1,payday:30,item:'Hisse'}};   /* haftalık yatırım planı */
+  plan:{weekly:200,weekday:1,payday:30,item:'Hisse'},     /* haftalık yatırım planı */
+  paydays:{},        /* ay ay işaretlenen maaş günü: {'2026-10':29} — yoksa plan.payday */
+  showGold:false};   /* altın satırları gizli; tutarları hesaplarda kalır */
 /* açılış: sayı = elle girilmiş, null = önceki yıl sonundan otomatik */
 function normYear(Y,y){
   var op=Y.opening;
@@ -519,6 +521,8 @@ function normalizeStore(){
   var P=STORE.plan||{};
   STORE.plan={weekly:(typeof P.weekly==='number'?P.weekly:200),weekday:(typeof P.weekday==='number'?P.weekday:1),
     payday:(typeof P.payday==='number'?P.payday:30),item:P.item||'Hisse'};
+  if(!STORE.paydays||typeof STORE.paydays!=='object') STORE.paydays={};
+  STORE.showGold=!!STORE.showGold;
 }
 
 function migrateYear(y){
@@ -543,6 +547,8 @@ function loadStore(){
         if(typeof p.alert==='number') STORE.alert=p.alert;
         STORE.schema=p.schema||0;
         if(p.plan) STORE.plan=p.plan;
+        if(p.paydays) STORE.paydays=p.paydays;
+        if(typeof p.showGold==='boolean') STORE.showGold=p.showGold;
       }
     }
   }catch(e){}
@@ -617,7 +623,7 @@ function errText(e){
   return (e&&e.message)||'Bağlantı kurulamadı';
 }
 function payload(){
-  return JSON.stringify({updatedAt:STORE.updatedAt,years:STORE.years,goal:STORE.goal,alert:STORE.alert,schema:STORE.schema,plan:STORE.plan},null,2);
+  return JSON.stringify({updatedAt:STORE.updatedAt,years:STORE.years,goal:STORE.goal,alert:STORE.alert,schema:STORE.schema,plan:STORE.plan,paydays:STORE.paydays,showGold:STORE.showGold},null,2);
 }
 function adopt(remote){
   STORE.updatedAt=remote.updatedAt||0;
@@ -626,6 +632,8 @@ function adopt(remote){
   if(typeof remote.alert==='number') STORE.alert=remote.alert;
   STORE.schema=remote.schema||0;
   if(remote.plan) STORE.plan=remote.plan;
+  if(remote.paydays) STORE.paydays=remote.paydays;
+  if(typeof remote.showGold==='boolean') STORE.showGold=remote.showGold;
   normalizeStore();
   persist();
   bindYear(view.year);
@@ -913,6 +921,12 @@ function itemKind(g,it){
   return it.invest?'alim':'gider';
 }
 function zeros(){ return new Array(12).fill(0); }
+/* ekranda gösterilecek kalemler (altın gizliyse altın satırları hariç — hesaplara yine dahil) */
+function shownItems(g){ return STORE.showGold?g.items:g.items.filter(function(it){ return it.invest!=='altin'; }); }
+function hiddenSum(g){ /* gizli altın satırlarının o yılki toplamı */
+  if(STORE.showGold) return 0;
+  var t=0; g.items.forEach(function(it){ if(it.invest==='altin') t+=Math.abs(yearSum(it.values)); }); return t;
+}
 function computeFor(groups,opening){
   var sub={}, revenue=zeros(), cost=zeros(), fixed=zeros(), variable=zeros(),
       buy=zeros(), sell=zeros(), realize=zeros();
@@ -988,9 +1002,12 @@ function investSplit(upto){
    Maaş her ay "payday"de yatar. O maaştan bir sonraki maaşa kadar
    kaç tane yatırım günü (haftanın "weekday"i) varsa o ay o kadar hafta yatırılır. */
 var WEEKDAYS=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-function payDate(y,m,day){ var last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)); }
+function payKey(y,m){ return y+'-'+(m<9?'0':'')+(m+1); }
+function payDay(y,m){ var o=STORE.paydays[payKey(y,m)]; return (typeof o==='number')?o:STORE.plan.payday; }
+function payMarked(y,m){ return typeof STORE.paydays[payKey(y,m)]==='number'; }
+function payDate(y,m){ var last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(payDay(y,m),last)); }
 function planWeeks(y,m){
-  var P=STORE.plan, a=payDate(y,m,P.payday), b=payDate(m===11?y+1:y,(m+1)%12,P.payday), n=0;
+  var P=STORE.plan, a=payDate(y,m), b=payDate(m===11?y+1:y,(m+1)%12), n=0;
   for(var d=new Date(a);d<b;d.setDate(d.getDate()+1)) if(d.getDay()===P.weekday) n++;
   return n;
 }
@@ -1171,8 +1188,10 @@ function buildTop(){
       '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">'+
         '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#3b82f6;flex:none"></span><span style="font-weight:700;font-size:14px">Hisse</span></div>'+
           '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(hisse)+' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(hFrac*100)+'%</span></div></div>'+
+        ((STORE.showGold||altin<0.5)?
         '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#f4ad15;flex:none"></span><span style="font-weight:700;font-size:14px">Altın</span></div>'+
-          '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(altin)+' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(aFrac*100)+'%</span></div></div>'+
+          '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(altin)+' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(aFrac*100)+'%</span></div></div>'
+        :'<div style="font-size:12px;color:#a8987c;font-weight:600">+ '+fmt(altin)+' eski altın (toplama dahil)</div>')+
         '<div style="font-size:12px;color:#8a7f6f;font-weight:600;line-height:1.45;border-top:1px dashed #e4d9c2;padding-top:8px">'+
           'Bu yıl yatırılan: <b>'+fmt(yearSum(c.buy))+'</b>'+(yearSum(c.sell)?' · satılan '+fmt(yearSum(c.sell)):'')+
           '<br>Plan: '+fmt(P.weekly)+'/hafta · her '+WEEKDAYS[P.weekday]+'</div>'+
@@ -1227,26 +1246,53 @@ function buildTableOrdered(){
     var P=STORE.plan, y=state.year;
     return '<div style="display:grid;grid-template-columns:'+GRID+';background:#f2f7fb">'+
       '<div style="'+labelBase('background:#f2f7fb;gap:6px;border-bottom:1px solid #dbe8f2')+'">'+
-        '<span style="flex:1;min-width:0;font-size:11.5px;color:#4f7fa3;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Maaş ayın '+P.payday+'’inde · her '+WEEKDAYS[P.weekday]+' '+fmt(P.weekly)+'">↳ Plan</span>'+
+        '<span style="flex:1;min-width:0;font-size:11.5px;color:#4f7fa3;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Her '+WEEKDAYS[P.weekday]+' '+fmt(P.weekly)+' · maaştan maaşa hafta sayısı">↳ Plan</span>'+
         '<button data-act="plan-set" style="background:none;border:1px solid #9fc0d8;color:#4f7fa3;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 5px;cursor:pointer">ayar</button>'+
         '<button data-act="plan-apply" style="background:#4f7fa3;border:none;color:#fff;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 6px;cursor:pointer">uygula</button>'+
       '</div>'+
       MONTHS.map(function(_,m){
         var w=planWeeks(y,m), amt=w*(P.weekly||0), ok=Math.abs((+it.values[m]||0)-amt)<0.005;
-        return '<div data-act="plan-cell" data-m="'+m+'" data-plan="'+m+'" title="'+payDate(y,m,P.payday).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' · tıkla → '+esc(it.name)+'’ye yaz" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:5px;font-size:11.5px;color:'+(ok?'#16a85a':'#4f7fa3')+';'+hl(m))+'">'+
+        return '<div data-act="plan-cell" data-m="'+m+'" data-plan="'+m+'" title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' · tıkla → '+esc(it.name)+'’ye yaz" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:5px;font-size:11.5px;color:'+(ok?'#16a85a':'#4f7fa3')+';'+hl(m))+'">'+
           '<span style="font-size:10px;color:#93b3cb;pointer-events:none">'+w+'hf</span><span style="pointer-events:none">'+(ok?'✓ ':'')+fmtPlain(amt)+'</span></div>';
       }).join('')+
       '<div style="'+totCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;font-size:11.5px;color:#4f7fa3;font-weight:700')+'">'+fmtPlain(MONTHS.reduce(function(t,_,m){ return t+planAmount(y,m); },0))+'</div>'+
     '</div>';
   }
 
-  function groupBlock(g,label){
+  /* her ayın maaş günü — tıkla, takvimden seç; arada kaç hafta olduğunu plan hesaplar */
+  var WD_S=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+  function payRow(){
+    var y=state.year;
+    var any=Object.keys(STORE.paydays).some(function(k){ return k.indexOf(y+'-')===0; });
+    return '<div style="display:grid;grid-template-columns:'+GRID+';background:#f2f7fb">'+
+      '<div style="'+labelBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2')+'">'+
+        '<span style="font-size:11.5px;color:#4f7fa3;font-weight:700" title="Her ay maaşın yattığı gün. Hafta sonuna denk gelirse tıklayıp takvimden değiştir.">↳ Maaş günü</span></div>'+
+      MONTHS.map(function(_,m){
+        var d=payDate(y,m), mk=payMarked(y,m), we=(d.getDay()===0||d.getDay()===6);
+        var last=new Date(y,m+1,0).getDate();
+        var iso=function(day){ return y+'-'+(m<9?'0':'')+(m+1)+'-'+(day<10?'0':'')+day; };
+        return '<div data-act="payday-cell" data-m="'+m+'" title="Maaş: '+d.toLocaleDateString('tr-TR',{day:'numeric',month:'long',weekday:'long'})+(mk?' (işaretli)':' (varsayılan)')+' · tıkla → takvimden değiştir" '+
+          'style="'+numCellBase('position:relative;background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:4px;font-size:11.5px;'+
+            'color:'+(we?'#c2410c':(mk?'#1f5f8b':'#93b3cb'))+';font-weight:'+(mk?'700':'600')+';'+hl(m))+'">'+
+          (mk?'<span style="width:6px;height:6px;border-radius:9px;background:#1f5f8b;pointer-events:none"></span>':'')+
+          '<span style="pointer-events:none">'+d.getDate()+' '+WD_S[d.getDay()]+'</span>'+
+          '<input type="date" data-act="payday" data-m="'+m+'" min="'+iso(1)+'" max="'+iso(last)+'" value="'+iso(d.getDate())+'" tabindex="-1" '+
+            'style="position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;pointer-events:none">'+
+        '</div>';
+      }).join('')+
+      '<div style="'+totCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;font-size:10.5px;color:#93b3cb;font-weight:600')+'">'+
+        (any?'<button data-act="payday-reset" style="background:none;border:none;color:#4f7fa3;font-size:10.5px;font-weight:700;cursor:pointer;text-decoration:underline">sıfırla</button>':'varsayılan '+STORE.plan.payday)+'</div>'+
+    '</div>';
+  }
+
+  /* compact: başlık ve toplam satırı olmadan, sadece kalemler (en alttaki satış / kâr-zarar için) */
+  function groupBlock(g,label,compact){
     var isRealize=(g.type==='realize');
     var tint=rgba(g.color,0.1);
     var gB='1px solid '+rgba(g.color,0.25);
     var pl=(g.type==='invest')?planItem():null;
     var html='';
-    html+='<div style="display:grid;grid-template-columns:'+GRID+';background:'+tint+'">'+
+    if(!compact) html+='<div style="display:grid;grid-template-columns:'+GRID+';background:'+tint+'">'+
       '<div style="'+labelBase('background:'+tint+';color:'+g.color+';border-left:3px solid '+g.color+';border-bottom:'+gB)+'">'+
         '<span style="display:inline-flex;align-items:center;justify-content:space-between;width:100%">'+
           '<span style="font-family:\'Fraunces\';font-size:13.5px;font-weight:600;letter-spacing:.3px">'+esc(label||g.name)+'</span>'+
@@ -1256,7 +1302,7 @@ function buildTableOrdered(){
       MONTHS.map(function(_,m){ return '<div style="'+numCellBase('background:'+tint+';border-bottom:'+gB+';'+hl(m))+'"></div>'; }).join('')+
       '<div style="'+totCellBase('background:'+tint+';border-bottom:'+gB)+'"></div>'+
     '</div>';
-    g.items.forEach(function(it){
+    shownItems(g).forEach(function(it){
       var cells=it.values.map(function(v,m){
         var isHL=(m===cm);
         return '<div style="'+numCellBase((isHL?'background:rgba(227,162,63,.08);box-shadow:'+sideHL+';':''))+'">'+
@@ -1266,7 +1312,7 @@ function buildTableOrdered(){
       }).join('');
       var IR=R['it:'+g.id+':'+it.id];
       html+='<div style="display:grid;grid-template-columns:'+GRID+';background:#fbf8f2">'+
-        '<div style="'+labelBase('background:#fbf8f2')+'">'+
+        '<div style="'+labelBase('background:#fbf8f2;'+(compact?'border-left:3px solid '+g.color+';':''))+'">'+
           '<span style="display:inline-flex;align-items:center;gap:6px;width:100%">'+
             '<input data-act="name" data-g="'+g.id+'" data-i="'+it.id+'" value="'+esc(it.name)+'" style="flex:1;min-width:0;border:none;background:transparent;font-size:12.5px;color:#3a342c;font-weight:500;outline:none;padding:2px 0">'+
             '<button data-act="del" data-g="'+g.id+'" data-i="'+it.id+'" style="background:none;border:none;color:#cdbb9c;font-size:13px;cursor:pointer;flex:none;line-height:1">×</button>'+
@@ -1274,10 +1320,11 @@ function buildTableOrdered(){
         '</div>'+cells+
         '<div data-rk="it:'+g.id+':'+it.id+'" data-m="y" style="'+totCellBase('border-bottom:1px solid #f0e8d8;color:'+(IR.col?IR.col(IR.year):'#8a7f6f')+';font-weight:600')+'">'+fmtPlain(IR.year)+'</div>'+
       '</div>';
-      if(pl&&pl.it===it) html+=planRow(it);
+      if(pl&&pl.it===it) html+=planRow(it)+payRow();
     });
+    if(compact) return html;
     var S=R['sub:'+g.id];
-    var subLabel=isRealize?'Net Realize K/Z':('Toplam '+(label||g.name));
+    var subLabel=(isRealize?'Net Kâr / Zarar':('Toplam '+(label||g.name))); if(hiddenSum(g)>0.005) subLabel=(isRealize?'Net K/Z':'Toplam')+' · altın dahil';
     var subColor=isRealize?(S.year<0?'#dc2626':(S.year>0?'#16a85a':g.color)):g.color;
     html+='<div style="display:grid;grid-template-columns:'+GRID+';background:#f3ecdd">'+
       '<div style="'+labelBase('background:#f3ecdd;color:'+subColor+';font-weight:700;border-bottom:1px solid #e4d9c2')+'">'+esc(subLabel)+'</div>'+
@@ -1288,11 +1335,11 @@ function buildTableOrdered(){
     '</div>';
     return html;
   }
-  function realizeDivider(){
-    return '<div style="padding:16px 14px 8px;background:#fbf8f2;border-top:1px dashed #d9ccb5">'+
-      '<div style="font-family:\'Fraunces\';font-size:13px;font-weight:600;color:#a8957a;letter-spacing:.4px;text-transform:uppercase">Realize K/Z</div>'+
-      '<div style="font-size:12px;color:#a8987c;margin-top:2px;max-width:900px;line-height:1.5">Bir satışta iki yere giriş yap: <b>“Yatırım Satışları”</b>na eline geçen nakti, buraya kâr/zararı (<b>zarar = eksi</b>). Satış nakdi bankaya girer, kâr/zarar <b>“Yatırımda kalan”</b>ı düzeltir — pozisyonu tamamen kapattıysan o varlık 0’a iner. <b>Örnek:</b> 2070’lik altını 1800’e sattın → “Altın Satışı” = 1800, “Altın K/Z” = −270.</div>'+
-    '</div>';
+  function saleHelp(){
+    return '<div style="padding:2px 14px 10px;background:#fbf8f2;font-size:12px;color:#a8987c;line-height:1.55;max-width:980px">'+
+      'Sattığında iki satır doldur: <b>Satış</b>’a eline geçen parayı, <b>K/Z</b>’ye kârı (+) ya da zararı (−). '+
+      '<b>Örnek:</b> 100 €’ya aldığın hisseyi 90 €’ya sattın → Hisse Satışı = 90, Hisse K/Z = −10. '+
+      'Satış parası bankaya girer, o hisse “Yatırımda kalan”dan düşer.</div>';
   }
 
   var by={income:[],fixed:[],variable:[],invest:[],realize:[]};
@@ -1314,15 +1361,22 @@ function buildTableOrdered(){
   }
   body+=sumRow('cost','Toplam Gider',{bg:'#e8dcc5',fg:'#5a5142',border:'border-top:2px solid #ddceb2;'});
   body+=sumRow('saving','Net Tasarruf',{bg:'#efe7d6',lfg:'#3a342c',label:'font-size:13.5px;'});
-  if(by.invest.length){
-    body+=band('Yatırım','gider değil — bankadan çıkar, “Yatırımda kalan”a eklenir',C_BLUE);
-    by.invest.forEach(function(g){ body+=groupBlock(g); });
-    body+=sumRow('invNet','Yatırıma Giden (net)',{bg:'#e6f0f7',fg:'#2b6a94',lfg:'#2b6a94'});
+  var buys=by.invest.filter(function(g){ return g.type==='invest'; });
+  var sales=by.invest.filter(function(g){ return g.type!=='invest'; });
+  if(buys.length){
+    body+=band('Yatırım','gider değil — bankadan çıkar, varlığında kalır',C_BLUE);
+    buys.forEach(function(g){ body+=groupBlock(g); });
   }
+  body+=band('Param ne durumda','ay sonu','#3a342c');
   body+=sumRow('bal','Banka (Nakit)',{bg:'#3a342c',lfg:'#f3ecdf',ybg:'#3a342c',border:'border-bottom:1px solid #4a433a;'});
   body+=sumRow('held','Yatırımda Kalan',{bg:'#2f4a5c',fg:'#a9d3ef',lfg:'#e6f2fa',border:'border-bottom:1px solid #3d5a6e;'});
   body+=sumRow('wealth','Toplam Varlık',{bg:'#f4e3b8',lfg:'#3a342c',label:'font-size:13.5px;',last:true});
-  if(by.realize.length){ body+=realizeDivider(); by.realize.forEach(function(g){ body+=groupBlock(g); }); }
+  if(sales.length||by.realize.length){
+    body+=band('Satış ve kâr / zarar','sadece hisse sattığın ay doldur','#a8957a');
+    body+=saleHelp();
+    sales.forEach(function(g){ body+=groupBlock(g,null,true); });
+    by.realize.forEach(function(g){ body+=groupBlock(g,null,true); });
+  }
   return head+body;
 }
 
@@ -1367,8 +1421,8 @@ function buildWeb(){
   '</div>';
 
   var foot='<div style="text-align:center;margin-top:20px;font-size:12.5px;color:#a8987c;line-height:1.6">'+
-    '<span data-slbl>'+esc(syncLabel())+'</span><br>'+
-    'Hisse / altın alımını <b>Yatırım</b>’a yaz: gider sayılmaz, bankadan düşer, toplam varlıkta kalır · satışta “Yatırım Satışları”na nakti, “Realize K/Z”ye kâr/zararı (zarar −) yaz'+
+    '<span data-slbl>'+esc(syncLabel())+'</span> · <button data-act="gold" style="background:none;border:none;color:#a8987c;font:inherit;text-decoration:underline;cursor:pointer;padding:0">altın satırlarını '+(STORE.showGold?'gizle':'göster')+'</button><br>'+
+    'Hisse alımını <b>Yatırım</b>’a yaz: gider sayılmaz, bankadan düşer, toplam varlıkta kalır · satış ve kâr/zarar en altta'+
   '</div>';
 
   return header+'<div id="topzone">'+buildTop()+'</div>'+tableCard+foot;
@@ -1416,6 +1470,21 @@ function planApply(){
   for(var k=from;k<12;k++) pi.it.values[k]=planAmount(state.year,k);
   touched(); render();
 }
+function setPayday(m,val){
+  var k=payKey(state.year,m);
+  var d=val?+String(val).split('-')[2]:0;
+  if(!d||d===STORE.plan.payday) delete STORE.paydays[k]; else STORE.paydays[k]=d;
+  touched(); render();
+}
+function pickPayday(cell,m){
+  var inp=cell.querySelector('input[type=date]');
+  if(inp&&inp.showPicker){ try{ inp.showPicker(); return; }catch(e){} }
+  var cur=payDate(state.year,m).getDate();
+  var v=prompt(MONTHS_L[m]+' '+state.year+' maaş günü (1–31):',cur);
+  if(v==null) return;
+  var d=Math.round(num(v)); if(d<1||d>31) return;
+  setPayday(m,state.year+'-'+(m+1)+'-'+d);
+}
 function planCell(m){
   var pi=planItem(); if(!pi) return;
   var amt=planAmount(state.year,m);
@@ -1426,7 +1495,7 @@ function planCell(m){
 }
 function openPlanModal(){
   var P=STORE.plan, pi=planItem();
-  var names=[]; state.groups.forEach(function(g){ if(g.type==='invest') g.items.forEach(function(it){ names.push(it.name); }); });
+  var names=[]; state.groups.forEach(function(g){ if(g.type==='invest') shownItems(g).forEach(function(it){ names.push(it.name); }); });
   var back=document.createElement('div');
   back.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(58,52,44,.34);display:flex;align-items:center;justify-content:center;padding:20px';
   var box=document.createElement('div');
@@ -1437,10 +1506,10 @@ function openPlanModal(){
   box.innerHTML='<div class="sh-h"><div class="sh-t">Haftalık yatırım planı</div><button class="sh-x">Kapat</button></div>'+
     '<div class="lab">Haftalık tutar (€)</div><div class="field"><input class="inp" id="pW" inputmode="decimal" value="'+P.weekly+'"></div>'+
     '<div class="lab">Hangi gün yatırıyorsun</div><div class="field"><select id="pD" '+sel+'>'+WEEKDAYS.map(function(d,i){ return '<option value="'+i+'"'+(i===P.weekday?' selected':'')+'>'+d+'</option>'; }).join('')+'</select></div>'+
-    '<div class="lab">Maaş ayın kaçında yatıyor</div><div class="field"><input class="inp" id="pP" inputmode="numeric" value="'+P.payday+'"></div>'+
+    '<div class="lab">Varsayılan maaş günü</div><div class="field"><input class="inp" id="pP" inputmode="numeric" value="'+P.payday+'"></div>'+
     '<div class="lab">Hangi kaleme</div><div class="field"><select id="pI" '+sel+'>'+names.map(function(n){ return '<option'+(pi&&pi.it.name===n?' selected':'')+'>'+esc(n)+'</option>'; }).join('')+'</select></div>'+
     '<button class="save" id="pS">Kaydet</button>'+
-    '<div class="note">Her ayın tutarı = o ayın maaşından bir sonraki maaşa kadar kaç '+'yatırım günü varsa × haftalık tutar. Ay 31’den kısaysa maaş ayın son günü sayılır.</div>';
+    '<div class="note">Her ayın tutarı = o ayın maaşından bir sonraki maaşa kadar kaç yatırım günü varsa × haftalık tutar. Tek tek aylar için maaş gününü tablodaki “Maaş günü” satırından takvimle işaretle; işaretlenmeyen aylarda buradaki gün kullanılır (ay kısaysa son gün).</div>';
   back.appendChild(box);
   document.body.appendChild(back);
   function close(){ back.remove(); }
@@ -1525,12 +1594,12 @@ function quickItems(){
   var out=[], seen={};
   recentIds().forEach(function(id){
     var x=locate(id);
-    if(x&&!seen[id]&&x.g.type!=='realize'){ out.push(x); seen[id]=1; }
+    if(x&&!seen[id]&&x.g.type!=='realize'&&(STORE.showGold||x.it.invest!=='altin')){ out.push(x); seen[id]=1; }
   });
   ['Günlük','Ev'].forEach(function(name){
     state.groups.forEach(function(g){
       if(g.name!==name) return;
-      g.items.forEach(function(it){ if(!seen[it.id]){ out.push({g:g,it:it}); seen[it.id]=1; } });
+      shownItems(g).forEach(function(it){ if(!seen[it.id]){ out.push({g:g,it:it}); seen[it.id]=1; } });
     });
   });
   return out.slice(0,8);
@@ -1708,7 +1777,7 @@ function mobHome(){
     '<div class="ygrid">'+
       '<div><div class="k">Yıl neti</div><div class="v tnum" style="color:'+(net<0?RUST:GREEN)+'">'+signedM(net)+'</div><div class="s tnum">'+fmtM(totRev)+' gelen · '+fmtM(totCost)+' giden</div></div>'+
       '<div><div class="k">Yıl sonu nakit</div><div class="v tnum" style="color:'+(endCash<0?RUST:INK)+'">'+fmtM(endCash)+'</div><div class="s tnum">açılış '+fmtM(state.opening)+'</div></div>'+
-      '<div><div class="k">Yatırımda</div><div class="v tnum" style="color:'+C_HISSE+'">'+fmtM(inv.sum)+'</div><div class="s tnum">hisse '+fmtM(inv.hisse)+(inv.altin>0.5?' · altın '+fmtM(inv.altin):'')+'</div></div>'+
+      '<div><div class="k">Yatırımda</div><div class="v tnum" style="color:'+C_HISSE+'">'+fmtM(inv.sum)+'</div><div class="s tnum">hisse '+fmtM(inv.hisse)+(inv.altin>0.5&&STORE.showGold?' · altın '+fmtM(inv.altin):'')+'</div></div>'+
       '<div><div class="k">Realize K/Z</div><div class="v tnum" style="color:'+(rz<0?RUST:(rz>0?GREEN:INK))+'">'+(rz?signedM(rz):'—')+'</div><div class="s">yatırım satışları</div></div>'+
     '</div>'+
     (goal>0?'<button class="goalrow" id="goalEdit">'+
@@ -1741,7 +1810,7 @@ function mobHome(){
   var empty=[];
   state.groups.forEach(function(g){
     var st=c.sub[g.id], mv=st[m], yv=yearSum(st);
-    var rows=g.items.filter(function(it){ return Math.abs(+it.values[m]||0)>0.005; })
+    var rows=shownItems(g).filter(function(it){ return Math.abs(+it.values[m]||0)>0.005; })
       .sort(function(a,b){ return Math.abs(b.values[m])-Math.abs(a.values[m]); });
     if(!rows.length){ empty.push(g); return; }
     var inc=g.type==='revenue', isR=g.type==='realize', col=gcolor(g);
@@ -1867,7 +1936,7 @@ function mobTable(keepTop){
   function groupRows(g){
     var col=gcolor(g), isR=g.type==='realize', st=c.sub[g.id], shut=!!closed[g.name], html='';
     /* yıl boyunca hep boş kalemler telefonda kalabalık etmesin (bilgisayarda duruyorlar) */
-    var items=g.items.filter(function(it){ return it.values.some(function(v){ return Math.abs(+v||0)>0.005; }); });
+    var items=shownItems(g).filter(function(it){ return it.values.some(function(v){ return Math.abs(+v||0)>0.005; }); });
     html+='<tr class="gh" data-gn="'+esc(g.name)+'"><td class="nm"><span class="tw">'+(items.length?(shut?'▸':'▾'):'')+'</span><i style="background:'+col+'"></i>'+esc(g.name)+'</td>'+
       ms.map(function(mm){ var v=st[mm]; return numTd(v,cls(mm),'',isR?(v<0?RUST:(v>0?GREEN:'')):''); }).join('')+
       numTd(yearSum(st),' yt','',isR&&yearSum(st)<0?RUST:'')+'</tr>';
@@ -2065,7 +2134,7 @@ function openOpening(){
 function openGroupSheet(gid,m){
   var g=find(gid); if(!g) return;
   var c=compute(), yearMode=(m==null);
-  var rows=g.items.map(function(it){ return {it:it,v:yearMode?yearSum(it.values):(+it.values[m]||0)}; })
+  var rows=shownItems(g).map(function(it){ return {it:it,v:yearMode?yearSum(it.values):(+it.values[m]||0)}; })
     .sort(function(a,b){ return Math.abs(b.v)-Math.abs(a.v); });
   var total=yearMode?yearSum(c.sub[g.id]):c.sub[g.id][m];
   var st=c.sub[g.id], mx=Math.max(1,Math.max.apply(null,st.map(Math.abs)));
@@ -2188,7 +2257,7 @@ function openItemSheet(o){
     var box=sh.querySelector('#itItems'), lab=sh.querySelector('#itItemsLab');
     if(editing){ box.style.display='none'; lab.textContent='Kalem adı'; return; }
     var g=find(d.gid);
-    var items=g?g.items.slice():[];
+    var items=g?shownItems(g).slice():[];
     box.innerHTML=items.map(function(it){
       var v=+it.values[m]||0;
       return '<button data-i="'+it.id+'" class="'+(it.id===d.iid?'on':'')+'">'+esc(it.name)+(Math.abs(v)>0.005?' <small class="tnum">'+fmtPlain(v)+'</small>':'')+'</button>';
@@ -2449,6 +2518,7 @@ root.addEventListener('change',function(e){
   if(act==='cell') setCell(t.getAttribute('data-g'),t.getAttribute('data-i'),+t.getAttribute('data-m'),t.value);
   else if(act==='name') setName(t.getAttribute('data-g'),t.getAttribute('data-i'),t.value);
   else if(act==='opening') setOpening(t.value);
+  else if(act==='payday') setPayday(+t.getAttribute('data-m'),t.value);
   else if(act==='import'){
     var file=t.files&&t.files[0];
     if(file) importBackup(file,function(okz){ if(!okz) alert('Yedek dosyası okunamadı.'); });
@@ -2469,6 +2539,9 @@ root.addEventListener('click',function(e){
   else if(act==='plan-set') openPlanModal();
   else if(act==='plan-apply') planApply();
   else if(act==='plan-cell') planCell(+t.getAttribute('data-m'));
+  else if(act==='payday-cell') pickPayday(t,+t.getAttribute('data-m'));
+  else if(act==='payday-reset'){ if(confirm(state.year+' için işaretlediğin maaş günleri silinsin mi? (Varsayılan '+STORE.plan.payday+' kullanılır)')){ Object.keys(STORE.paydays).forEach(function(k){ if(k.indexOf(state.year+'-')===0) delete STORE.paydays[k]; }); touched(); render(); } }
+  else if(act==='gold'){ STORE.showGold=!STORE.showGold; touched(); render(); }
 });
 
 /* ════════════════════════════════════════════════════════════
