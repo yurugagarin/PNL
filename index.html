@@ -1026,27 +1026,71 @@ function planItem(){
    ════════════════════════════════════════════════════════════ */
 function find(gid){ for(var i=0;i<state.groups.length;i++){ if(state.groups[i].id===gid) return state.groups[i]; } return null; }
 function findItem(g,iid){ for(var i=0;i<g.items.length;i++){ if(g.items[i].id===iid) return g.items[i]; } return null; }
+/* ---------- web: geri al ----------
+   Her değişiklikten önce verinin bir kopyası alınır; "Geri al" / Ctrl+Z son kopyaya döner. */
+var UNDO=[];
+function snapState(){ return JSON.stringify({years:STORE.years,plan:STORE.plan,paydays:STORE.paydays,showGold:STORE.showGold,goal:STORE.goal,alert:STORE.alert}); }
+function webSnap(label){
+  UNDO.push({label:label,data:snapState()});
+  if(UNDO.length>40) UNDO.shift();
+}
+function webUndo(){
+  var u=UNDO.pop();
+  if(!u){ webToast('Geri alınacak bir şey yok'); return; }
+  var d=JSON.parse(u.data);
+  STORE.years=d.years; STORE.plan=d.plan; STORE.paydays=d.paydays; STORE.showGold=d.showGold; STORE.goal=d.goal; STORE.alert=d.alert;
+  normalizeStore(); bindYear(view.year);
+  touched(); render();
+  webToast('Geri alındı: '+u.label,UNDO.length?'Bir adım daha geri al':false);
+}
+var webToastT=null;
+function webToast(msg,act){
+  if(view.mode!=='web') return;
+  var old=document.getElementById('webToast'); if(old) old.remove();
+  clearTimeout(webToastT);
+  var el=document.createElement('div'); el.id='webToast';
+  el.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:14px;'+
+    'background:#3a342c;color:#f3ecdf;padding:11px 12px 11px 18px;border-radius:12px;font:600 13.5px Karla,system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw';
+  el.innerHTML='<span>'+esc(msg)+'</span>'+
+    (act!==false?'<button style="background:#5a5142;border:none;color:#f4d58a;font:700 13px Karla,system-ui,sans-serif;padding:6px 10px;border-radius:8px;cursor:pointer">'+esc(act||'Geri al')+'</button>':'');
+  var b=el.querySelector('button');
+  if(b) b.onclick=function(){ el.remove(); webUndo(); };
+  document.body.appendChild(el);
+  webToastT=setTimeout(function(){ el.remove(); },7000);
+}
+
 function setCell(gid,iid,m,raw){
   var g=find(gid),it=g&&findItem(g,iid); if(!it) return;
-  it.values[m]=num(raw); touched(); refreshSummary();
+  var nv=num(raw); if((+it.values[m]||0)===nv) return;
+  webSnap(it.name+' · '+MONTHS[m]);
+  it.values[m]=nv; touched(); refreshSummary();
+  webToast(it.name+' · '+MONTHS_L[m]+' '+state.year+': '+fmtPlain(nv));
 }
 function setName(gid,iid,name){
   var g=find(gid),it=g&&findItem(g,iid); if(!it) return;
+  webSnap('ad değişikliği');
   it.name=name; touched();
 }
 function addItem(gid){
   var g=find(gid); if(!g) return;
+  webSnap('yeni satır');
   g.items.push({id:uid('i'),name:'Yeni kalem',values:new Array(12).fill(0)});
   touched(); render();
 }
 function delItem(gid,iid){
   var g=find(gid); if(!g) return;
-  g.items=g.items.filter(function(it){ return it.id!==iid; });
+  var it=findItem(g,iid); if(!it) return;
+  if(it.values.some(function(v){ return Math.abs(+v||0)>0.005; })&&
+     !confirm('“'+it.name+'” satırı ve içindeki '+state.year+' tutarları silinsin mi? (Geri alabilirsin)')) return;
+  webSnap('“'+it.name+'” silindi');
+  g.items=g.items.filter(function(x){ return x.id!==iid; });
   touched(); render();
+  webToast('“'+it.name+'” silindi');
 }
 function setOpening(raw){
   /* sonraki yıllarda boş bırakılırsa önceki yıl sonundan otomatik gelir */
   var auto=(String(raw).trim()===''&&state.year!==YEARS[0]);
+  if(view.mode==='web') webSnap('açılış bakiyesi');
   STORE.years[state.year].opening=auto?null:num(raw);
   state.opening=openingOf(state.year);
   touched(); refreshSummary();
@@ -1251,9 +1295,9 @@ function buildTableOrdered(){
         '<button data-act="plan-apply" style="background:#4f7fa3;border:none;color:#fff;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 6px;cursor:pointer">uygula</button>'+
       '</div>'+
       MONTHS.map(function(_,m){
-        var w=planWeeks(y,m), amt=w*(P.weekly||0), ok=Math.abs((+it.values[m]||0)-amt)<0.005;
-        return '<div data-act="plan-cell" data-m="'+m+'" data-plan="'+m+'" title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' · tıkla → '+esc(it.name)+'’ye yaz" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:5px;font-size:11.5px;color:'+(ok?'#16a85a':'#4f7fa3')+';'+hl(m))+'">'+
-          '<span style="font-size:10px;color:#93b3cb;pointer-events:none">'+w+'hf</span><span style="pointer-events:none">'+(ok?'✓ ':'')+fmtPlain(amt)+'</span></div>';
+        var w=planWeeks(y,m), amt=w*(P.weekly||0);
+        return '<div title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' × '+fmtPlain(P.weekly||0)+'" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;gap:5px;font-size:11.5px;color:#4f7fa3;'+hl(m))+'">'+
+          '<span style="font-size:10px;color:#93b3cb">'+w+'hf</span><span>'+fmtPlain(amt)+'</span></div>';
       }).join('')+
       '<div style="'+totCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;font-size:11.5px;color:#4f7fa3;font-weight:700')+'">'+fmtPlain(MONTHS.reduce(function(t,_,m){ return t+planAmount(y,m); },0))+'</div>'+
     '</div>';
@@ -1399,6 +1443,8 @@ function buildWeb(){
       '<button class="ghostbtn" data-act="sync" style="display:flex;align-items:center;gap:7px">'+
         '<span data-sdot style="width:9px;height:9px;border-radius:999px;background:'+syncColor()+';display:inline-block"></span>'+
         'Senkron</button>'+
+      '<button class="ghostbtn" data-act="undo" title="Son değişikliği geri al (Ctrl+Z)">↶ Geri al</button>'+
+      '<button class="ghostbtn" data-act="history" title="Buluttaki eski sürümlerden değer geri getir">Geçmiş</button>'+
       '<button class="ghostbtn" data-act="link">📱 Telefonu bağla</button>'+
       (smallScreen()&&viewPref()==='web'?'<button class="ghostbtn" data-act="mobview">Telefon görünümü</button>':'')+
       '<button class="ghostbtn" data-act="export">Yedek indir</button>'+
@@ -1442,15 +1488,6 @@ function refreshSummary(){
     var col=isY&&S.ycol?S.ycol(v):(S.col?S.col(v):null);
     if(col) el.style.color=col;
   }
-  var pi=planItem();
-  if(pi){
-    var pc=document.querySelectorAll('[data-plan]');
-    for(var j=0;j<pc.length;j++){
-      var m=+pc[j].getAttribute('data-plan'), amt=planAmount(state.year,m), ok=Math.abs((+pi.it.values[m]||0)-amt)<0.005;
-      pc[j].style.color=ok?'#16a85a':'#4f7fa3';
-      pc[j].lastChild.textContent=(ok?'✓ ':'')+fmtPlain(amt);
-    }
-  }
   var on=document.getElementById('openNote');
   if(on&&state.year!==YEARS[0]){
     var auto=STORE.years[state.year].opening==null;
@@ -1467,12 +1504,15 @@ function planApply(){
   if(from>11){ alert(state.year+' geçmiş bir yıl — plan sadece bu aydan sonrasına uygulanır.'); return; }
   var list=[]; for(var m=from;m<12;m++) list.push(MONTHS[m]+' '+fmtPlain(planAmount(state.year,m)));
   if(!confirm('“'+pi.it.name+'” satırına plan tutarları yazılsın mı?\n\n'+list.join(' · ')+'\n\nGeçmiş aylar değişmez.')) return;
+  webSnap('plan uygulandı');
   for(var k=from;k<12;k++) pi.it.values[k]=planAmount(state.year,k);
   touched(); render();
+  webToast('Plan '+MONTHS[from]+'–Ara için uygulandı');
 }
 function setPayday(m,val){
   var k=payKey(state.year,m);
   var d=val?+String(val).split('-')[2]:0;
+  webSnap('maaş günü');
   if(!d||d===STORE.plan.payday) delete STORE.paydays[k]; else STORE.paydays[k]=d;
   touched(); render();
 }
@@ -1484,14 +1524,6 @@ function pickPayday(cell,m){
   if(v==null) return;
   var d=Math.round(num(v)); if(d<1||d>31) return;
   setPayday(m,state.year+'-'+(m+1)+'-'+d);
-}
-function planCell(m){
-  var pi=planItem(); if(!pi) return;
-  var amt=planAmount(state.year,m);
-  pi.it.values[m]=amt;
-  var inp=document.querySelector('input[data-act="cell"][data-i="'+pi.it.id+'"][data-m="'+m+'"]');
-  if(inp) inp.value=amt?String(amt):'';
-  touched(); refreshSummary();
 }
 function openPlanModal(){
   var P=STORE.plan, pi=planItem();
@@ -1517,6 +1549,7 @@ function openPlanModal(){
   box.querySelector('.sh-x').onclick=close;
   box.querySelector('#pS').onclick=function(){
     var pd=Math.round(num(box.querySelector('#pP').value));
+    webSnap('plan ayarı');
     STORE.plan={weekly:num(box.querySelector('#pW').value),weekday:+box.querySelector('#pD').value,
       payday:Math.max(1,Math.min(31,pd||30)),item:box.querySelector('#pI').value||P.item};
     touched(); close(); render();
@@ -2436,6 +2469,120 @@ function wireSync(s,after){
     };
   }
 }
+/* ---------- geçmiş: buluttaki eski sürümlerden değer geri getir ----------
+   GitHub Gist her kaydı ayrı bir sürüm olarak saklar. Bir sürüm seçilince
+   o sürümle şimdiki veri arasındaki farklı hücreler listelenir; seçilenler eski haline döner. */
+function storeDiff(old){
+  var out=[];
+  YEARS.forEach(function(y){
+    var oy=old&&old.years&&old.years[y], cy=STORE.years[y]; if(!oy||!cy) return;
+    var om={};
+    (oy.groups||[]).forEach(function(g){ (g.items||[]).forEach(function(it){ om[it.id]=it; }); });
+    cy.groups.forEach(function(g){
+      g.items.forEach(function(it){
+        var o=om[it.id]; if(!o) return;
+        for(var m=0;m<12;m++){
+          var ov=+((o.values||[])[m])||0, cv=+it.values[m]||0;
+          if(Math.abs(ov-cv)>0.005) out.push({y:y,gid:g.id,iid:it.id,name:it.name,m:m,now:cv,then:ov});
+        }
+      });
+    });
+    var oo=(oy.opening==null?null:+oy.opening||0), co=cy.opening;
+    if(oo!==co&&!(oo===null&&co===null)) out.push({y:y,opening:true,name:'Açılış bakiyesi',now:co,then:oo});
+  });
+  return out;
+}
+function openHistory(){
+  var back=document.createElement('div');
+  back.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(58,52,44,.34);display:flex;align-items:center;justify-content:center;padding:20px';
+  var box=document.createElement('div');
+  box.className='mobscope';
+  box.style.cssText='background:#f6f5f2;color:#1b1a18;border-radius:22px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;padding:18px 22px 22px;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;'+
+    '--ink:#1b1a18;--paper:#f6f5f2;--card:#fff;--green:#2f7a5b;--rust:#b4622f;--m1:rgba(27,26,24,.06);--m2:rgba(27,26,24,.1);--m3:rgba(27,26,24,.3);--m4:rgba(27,26,24,.55);--m5:rgba(27,26,24,.6);--m6:rgba(27,26,24,.72)';
+  back.appendChild(box); document.body.appendChild(back);
+  function close(){ back.remove(); }
+  back.onclick=function(e){ if(e.target===back) close(); };
+  var row='display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border-radius:12px;background:#fff;margin-top:6px;border:0;font:inherit;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05)';
+  function head(t){ return '<div class="sh-h"><div class="sh-t">'+t+'</div><button class="sh-x">Kapat</button></div>'; }
+  function wireClose(){ box.querySelector('.sh-x').onclick=close; }
+
+  if(!syncOn()){
+    box.innerHTML=head('Geçmiş')+'<div class="note" style="text-align:left;font-size:13.5px;margin-top:12px">Eski sürümler bulutta (GitHub) saklanır; bu cihazda senkron kapalı olduğu için geçmiş yok. '+
+      'Bu oturumdaki değişiklikler için üstteki <b>↶ Geri al</b> düğmesini kullan. Senkronu açarsan bundan sonraki her kayıt geri getirilebilir olur.</div>';
+    wireClose(); return;
+  }
+  box.innerHTML=head('Geçmiş sürümler')+'<div class="note" style="text-align:left;margin-top:8px">Yükleniyor…</div>';
+  wireClose();
+  ensureGist().then(function(){
+    return ghFetch('https://api.github.com/gists/'+SY.gist+'/commits?per_page=40');
+  }).then(function(list){
+    box.innerHTML=head('Geçmiş sürümler')+
+      '<div class="note" style="text-align:left;margin-top:8px;font-size:12.5px">Her satır buluta yapılmış bir kayıt. Birine tıkla → o andan beri değişen hücreleri gör, istediklerini eski haline getir.</div>'+
+      '<div id="hList"></div>';
+    wireClose();
+    var hl=box.querySelector('#hList');
+    list.forEach(function(v,i){
+      var b=document.createElement('button');
+      b.style.cssText=row;
+      var t=new Date(v.committed_at);
+      b.innerHTML='<span style="flex:1;font-weight:600">'+t.toLocaleDateString('tr-TR',{day:'numeric',month:'long',weekday:'short'})+' · '+t.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})+'</span>'+
+        '<span style="font-size:12px;color:rgba(27,26,24,.5)">'+(i===0?'en son kayıt':'')+'</span><span style="color:rgba(27,26,24,.3)">›</span>';
+      b.onclick=function(){ showVersion(v); };
+      hl.appendChild(b);
+    });
+    if(!list.length) hl.innerHTML='<div class="note">Henüz kayıt yok.</div>';
+  }).catch(function(e){
+    box.innerHTML=head('Geçmiş')+'<div class="note" style="text-align:left;color:#b4622f">'+esc(errText(e))+'</div>'; wireClose();
+  });
+
+  function showVersion(v){
+    var t=new Date(v.committed_at), when=t.toLocaleDateString('tr-TR',{day:'numeric',month:'long'})+' '+t.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+    box.innerHTML=head(when+' sürümü')+'<div class="note" style="text-align:left;margin-top:8px">Yükleniyor…</div>';
+    wireClose();
+    ghFetch('https://api.github.com/gists/'+SY.gist+'/'+v.version).then(function(g){
+      var f=g.files&&g.files[FILE]; if(!f) throw new Error('Bu sürümde dosya yok');
+      if(f.truncated&&f.raw_url) return fetch(f.raw_url,{cache:'no-store'}).then(function(r){ return r.text(); }).then(JSON.parse);
+      return JSON.parse(f.content);
+    }).then(function(old){
+      var d=storeDiff(old);
+      var back2='<button id="hBack" style="background:none;border:none;color:#2f7a5b;font:600 13px inherit;cursor:pointer;padding:6px 0">‹ Tüm sürümler</button>';
+      if(!d.length){
+        box.innerHTML=head(when+' sürümü')+back2+'<div class="note" style="text-align:left;font-size:13.5px">Bu sürümle şimdiki veri arasında fark yok.</div>';
+        wireClose(); box.querySelector('#hBack').onclick=function(){ close(); openHistory(); }; return;
+      }
+      box.innerHTML=head(when+' sürümü')+back2+
+        '<div class="note" style="text-align:left;font-size:13px">O andan beri değişen '+d.length+' hücre. İşaretli olanlar o sürümdeki değerine döner:</div>'+
+        '<div id="hDiff" style="margin-top:8px"></div>'+
+        '<button class="save" id="hGo">Seçilenleri geri getir</button>'+
+        '<div class="note">Diğer hücrelere dokunulmaz. Yanlış olursa ↶ Geri al ile dönebilirsin.</div>';
+      wireClose(); box.querySelector('#hBack').onclick=function(){ close(); openHistory(); };
+      var dv=box.querySelector('#hDiff');
+      d.forEach(function(x,i){
+        var lab=document.createElement('label');
+        lab.style.cssText=row+';cursor:pointer';
+        lab.innerHTML='<input type="checkbox" data-i="'+i+'" checked style="width:18px;height:18px;flex:none">'+
+          '<span style="flex:1;min-width:0"><b>'+esc(x.name)+'</b> <span style="color:rgba(27,26,24,.55)">· '+(x.opening?'':MONTHS_L[x.m]+' ')+x.y+'</span></span>'+
+          '<span style="font-variant-numeric:tabular-nums;white-space:nowrap">şimdi <b>'+(x.now==null?'otomatik':fmtPlain(x.now))+'</b> → o zaman <b style="color:#2f7a5b">'+(x.then==null?'otomatik':fmtPlain(x.then))+'</b></span>';
+        dv.appendChild(lab);
+      });
+      box.querySelector('#hGo').onclick=function(){
+        var pick=[].slice.call(dv.querySelectorAll('input:checked')).map(function(c){ return d[+c.getAttribute('data-i')]; });
+        if(!pick.length) return;
+        webSnap(pick.length+' hücre geçmişten');
+        pick.forEach(function(x){
+          var Y=STORE.years[x.y]; if(!Y) return;
+          if(x.opening){ Y.opening=x.then; return; }
+          Y.groups.forEach(function(g){ if(g.id!==x.gid) return; var it=findItem(g,x.iid); if(it) it.values[x.m]=x.then; });
+        });
+        bindYear(view.year); touched(); close(); render();
+        webToast(pick.length+' hücre '+when+' sürümüne döndü');
+      };
+    }).catch(function(e){
+      box.innerHTML=head('Geçmiş')+'<div class="note" style="text-align:left;color:#b4622f">'+esc(e.status?errText(e):(e.message||'Okunamadı'))+'</div>'; wireClose();
+    });
+  }
+}
+
 /* web tarafı için modal */
 function openSyncModal(showLink){
   var back=document.createElement('div');
@@ -2509,7 +2656,15 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('resize',onVV);
   window.visualViewport.addEventListener('scroll',onVV);
 }
-document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&sheetOpen) closeSheet(); });
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&sheetOpen) closeSheet();
+  /* Ctrl+Z / Cmd+Z: hücre dışındayken son değişikliği geri al (hücre içindeyken tarayıcının kendi geri alması çalışır) */
+  if(view.mode==='web'&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='z'||e.key==='Z')){
+    var a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.value!==a.defaultValue) return;
+    e.preventDefault(); if(a&&a.blur) a.blur(); webUndo();
+  }
+});
 
 /* web olay delegasyonu */
 root.addEventListener('change',function(e){
@@ -2538,10 +2693,11 @@ root.addEventListener('click',function(e){
   else if(act==='mobview'){ lsSet('pnl_view',''); render(); }
   else if(act==='plan-set') openPlanModal();
   else if(act==='plan-apply') planApply();
-  else if(act==='plan-cell') planCell(+t.getAttribute('data-m'));
   else if(act==='payday-cell') pickPayday(t,+t.getAttribute('data-m'));
-  else if(act==='payday-reset'){ if(confirm(state.year+' için işaretlediğin maaş günleri silinsin mi? (Varsayılan '+STORE.plan.payday+' kullanılır)')){ Object.keys(STORE.paydays).forEach(function(k){ if(k.indexOf(state.year+'-')===0) delete STORE.paydays[k]; }); touched(); render(); } }
-  else if(act==='gold'){ STORE.showGold=!STORE.showGold; touched(); render(); }
+  else if(act==='payday-reset'){ if(confirm(state.year+' için işaretlediğin maaş günleri silinsin mi? (Varsayılan '+STORE.plan.payday+' kullanılır)')){ webSnap('maaş günleri sıfırlandı'); Object.keys(STORE.paydays).forEach(function(k){ if(k.indexOf(state.year+'-')===0) delete STORE.paydays[k]; }); touched(); render(); } }
+  else if(act==='gold'){ webSnap('altın görünümü'); STORE.showGold=!STORE.showGold; touched(); render(); }
+  else if(act==='undo') webUndo();
+  else if(act==='history') openHistory();
 });
 
 /* ════════════════════════════════════════════════════════════
