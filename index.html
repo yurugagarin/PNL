@@ -1250,17 +1250,17 @@ function buildTop(){
       '<svg viewBox="0 0 160 160" style="width:122px;height:122px;flex:none">'+
         '<circle cx="80" cy="80" r="60" fill="none" stroke="#efe7d6" stroke-width="20"></circle>'+
         '<circle cx="80" cy="80" r="60" fill="none" stroke="#3b82f6" stroke-width="20" stroke-dasharray="'+(hFrac*C).toFixed(2)+' '+C.toFixed(2)+'" transform="rotate(-90 80 80)"></circle>'+
-        '<circle cx="80" cy="80" r="60" fill="none" stroke="#f4ad15" stroke-width="20" stroke-dasharray="'+(aFrac*C).toFixed(2)+' '+C.toFixed(2)+'" stroke-dashoffset="'+(-hFrac*C).toFixed(2)+'" transform="rotate(-90 80 80)"></circle>'+
+        (STORE.showGold?'<circle cx="80" cy="80" r="60" fill="none" stroke="#f4ad15" stroke-width="20" stroke-dasharray="'+(aFrac*C).toFixed(2)+' '+C.toFixed(2)+'" stroke-dashoffset="'+(-hFrac*C).toFixed(2)+'" transform="rotate(-90 80 80)"></circle>':'')+
         '<text x="80" y="74" font-size="13" fill="#a8987c" text-anchor="middle" font-family="Karla" font-weight="700">Toplam</text>'+
         '<text x="80" y="94" font-size="16" fill="#3a342c" text-anchor="middle" font-family="Fraunces" font-weight="600">'+fmt(invSum)+'</text>'+
       '</svg>'+
       '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">'+
         '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#3b82f6;flex:none"></span><span style="font-weight:700;font-size:14px">Hisse</span></div>'+
-          '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(hisse)+' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(hFrac*100)+'%</span></div></div>'+
+          '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(hisse)+((STORE.showGold||altin<0.5)?' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(hFrac*100)+'%</span>':'')+'</div></div>'+
         ((STORE.showGold||altin<0.5)?
         '<div><div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#f4ad15;flex:none"></span><span style="font-weight:700;font-size:14px">Altın</span></div>'+
           '<div style="font-family:\'Fraunces\';font-size:19px;font-weight:600;margin-top:1px">'+fmt(altin)+' <span style="font-size:13px;color:#a8987c;font-family:Karla">· '+Math.round(aFrac*100)+'%</span></div></div>'
-        :'<div style="font-size:12px;color:#a8987c;font-weight:600">+ '+fmt(altin)+' eski altın (toplama dahil)</div>')+
+        :'')+
         '<div style="font-size:12px;color:#8a7f6f;font-weight:600;line-height:1.45;border-top:1px dashed #e4d9c2;padding-top:8px">'+
           'Bu yıl yatırılan: <b>'+fmt(yearSum(c.buy))+'</b>'+(yearSum(c.sell)?' · satılan '+fmt(yearSum(c.sell)):'')+
           '<br>'+((cm>=0&&weeklyOf(state.year,cm))?MONTHS_L[cm]+' planı: '+planWeeks(state.year,cm)+' hafta × '+fmt(weeklyOf(state.year,cm))+' = '+fmt(planAmount(state.year,cm)):'Yatırım günü: her '+WEEKDAYS[P.weekday])+'</div>'+
@@ -1408,7 +1408,7 @@ function buildTableOrdered(){
     });
     if(compact) return html;
     var S=R['sub:'+g.id];
-    var subLabel=(isRealize?'Net Kâr / Zarar':('Toplam '+(label||g.name))); if(hiddenSum(g)>0.005) subLabel=(isRealize?'Net K/Z':'Toplam')+' · altın dahil';
+    var subLabel=(isRealize?'Net Kâr / Zarar':('Toplam '+(label||g.name)));
     var subColor=isRealize?(S.year<0?'#dc2626':(S.year>0?'#16a85a':g.color)):g.color;
     html+='<div style="display:grid;grid-template-columns:'+GRID+';background:#f3ecdd">'+
       '<div style="'+labelBase('background:#f3ecdd;color:'+subColor+';font-weight:700;border-bottom:1px solid #e4d9c2')+'">'+esc(subLabel)+'</div>'+
