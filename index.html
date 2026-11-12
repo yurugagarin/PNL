@@ -497,11 +497,12 @@ function ensureGroups(groups){
    3 · DEPO  (tek kaynak — web ve mobil aynı veriyi okur)
    ════════════════════════════════════════════════════════════ */
 var SKEY='pnl_store_v3';
-var STORE={updatedAt:0,years:{},goal:12000,alert:0,schema:5,
+var STORE={updatedAt:0,years:{},goal:12000,alert:0,schema:6,
   plan:{weekday:1,payday:30,item:'Hisse'},     /* yatırım günü, varsayılan maaş günü, hangi kalem */
   weekly:{},         /* ay ay haftalık yatırım tutarı: {'2026-11':200} — girilmeyen ayda plan yok */
   wplans:['Günlük Harcama'],   /* aynı "haftalık × hafta sayısı" mantığıyla hesaplanan gider kalemleri */
   weeklyX:{},        /* onların ay ay haftalık tutarı: {'günlük harcama':{'2026-11':150}} */
+  wdays:{},          /* onların haftası hangi gün bitiyor (0=Pazar): {'günlük harcama':0} — yoksa Pazar */
   paydays:{},        /* ay ay işaretlenen maaş günü: {'2026-10':29} — yoksa plan.payday */
   showGold:false};   /* altın satırları gizli; tutarları hesaplarda kalır */
 /* açılış: sayı = elle girilmiş, null = önceki yıl sonundan otomatik */
@@ -527,6 +528,7 @@ function normalizeStore(){
   if(!STORE.weekly||typeof STORE.weekly!=='object') STORE.weekly={};
   if(!Array.isArray(STORE.wplans)) STORE.wplans=['Günlük Harcama'];
   if(!STORE.weeklyX||typeof STORE.weeklyX!=='object') STORE.weeklyX={};
+  if(!STORE.wdays||typeof STORE.wdays!=='object') STORE.wdays={};
   /* eski sürümde tek bir haftalık tutar bütün yıllara uygulanıyordu. Artık ay ay giriliyor:
      sadece Hisse'si o eski plana zaten eşit olan aylara eski tutarı taşı, gerisi boş kalsın. */
   if(!(STORE.schema>=5)&&oldWeekly>0){
@@ -544,7 +546,27 @@ function normalizeStore(){
       });
     });
   }
-  STORE.schema=5;
+  /* harçlık kalemlerinin haftası önce yatırım gününe göre sayılıyordu; artık kendi gününe (Pazar) göre.
+     Tutarı eski hesaba eşit olan aylar yeni hesaba taşınır. */
+  if(!(STORE.schema>=6)){
+    STORE.wplans.forEach(function(n){
+      var k=lowerTr(n), map=STORE.weeklyX[k]; if(!map||typeof STORE.wdays[k]==='number') return;
+      YEARS.forEach(function(y){
+        STORE.years[y].groups.forEach(function(g){
+          if(g.type!=='cost') return;
+          g.items.forEach(function(it){
+            if(lowerTr(it.name)!==k) return;
+            for(var m=0;m<12;m++){
+              var w=map[payKey(y,m)]; if(typeof w!=='number'||!w) continue;
+              var oldA=countWeeks(y,m,STORE.plan.weekday)*w, newA=countWeeks(y,m,0)*w;
+              if(oldA!==newA&&Math.abs((+it.values[m]||0)-oldA)<0.005) it.values[m]=newA;
+            }
+          });
+        });
+      });
+    });
+  }
+  STORE.schema=6;
   STORE.showGold=!!STORE.showGold;
 }
 
@@ -574,6 +596,7 @@ function loadStore(){
         if(p.weekly) STORE.weekly=p.weekly;
         if(p.wplans) STORE.wplans=p.wplans;
         if(p.weeklyX) STORE.weeklyX=p.weeklyX;
+        if(p.wdays) STORE.wdays=p.wdays;
         if(typeof p.showGold==='boolean') STORE.showGold=p.showGold;
       }
     }
@@ -649,7 +672,7 @@ function errText(e){
   return (e&&e.message)||'Bağlantı kurulamadı';
 }
 function payload(){
-  return JSON.stringify({updatedAt:STORE.updatedAt,years:STORE.years,goal:STORE.goal,alert:STORE.alert,schema:STORE.schema,plan:STORE.plan,paydays:STORE.paydays,weekly:STORE.weekly,wplans:STORE.wplans,weeklyX:STORE.weeklyX,showGold:STORE.showGold},null,2);
+  return JSON.stringify({updatedAt:STORE.updatedAt,years:STORE.years,goal:STORE.goal,alert:STORE.alert,schema:STORE.schema,plan:STORE.plan,paydays:STORE.paydays,weekly:STORE.weekly,wplans:STORE.wplans,weeklyX:STORE.weeklyX,wdays:STORE.wdays,showGold:STORE.showGold},null,2);
 }
 function adopt(remote){
   STORE.updatedAt=remote.updatedAt||0;
@@ -662,6 +685,7 @@ function adopt(remote){
   if(remote.weekly) STORE.weekly=remote.weekly;
   if(remote.wplans) STORE.wplans=remote.wplans;
   if(remote.weeklyX) STORE.weeklyX=remote.weeklyX;
+  if(remote.wdays) STORE.wdays=remote.wdays;
   if(typeof remote.showGold==='boolean') STORE.showGold=remote.showGold;
   normalizeStore();
   persist();
@@ -1031,30 +1055,34 @@ function investSplit(upto){
    Maaş her ay "payday"de yatar. O maaştan bir sonraki maaşa kadar
    kaç tane yatırım günü (haftanın "weekday"i) varsa o ay o kadar hafta yatırılır. */
 var WEEKDAYS=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+var WD_S=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
 function payKey(y,m){ return y+'-'+(m<9?'0':'')+(m+1); }
 function payDay(y,m){ var o=STORE.paydays[payKey(y,m)]; return (typeof o==='number')?o:STORE.plan.payday; }
 function payMarked(y,m){ return typeof STORE.paydays[payKey(y,m)]==='number'; }
 function payDate(y,m){ var last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(payDay(y,m),last)); }
-function planWeeks(y,m){
-  var P=STORE.plan, a=payDate(y,m), b=payDate(m===11?y+1:y,(m+1)%12), n=0;
-  for(var d=new Date(a);d<b;d.setDate(d.getDate()+1)) if(d.getDay()===P.weekday) n++;
+/* o ayın maaşından bir sonraki maaşa kadar, planın kendi gününden kaç tane var
+   (yatırım: yatırım günü · harçlık: haftanın bittiği gün, varsayılan Pazar) */
+function countWeeks(y,m,wd){
+  var a=payDate(y,m), b=payDate(m===11?y+1:y,(m+1)%12), n=0;
+  for(var d=new Date(a);d<b;d.setDate(d.getDate()+1)) if(d.getDay()===wd) n++;
   return n;
 }
+function planWeeks(y,m,pl){ return countWeeks(y,m,(pl||planList()[0]).weekday); }
 /* Haftalık planlar: 'inv' = yatırım kalemi (Hisse), diğerleri = haftalık bütçeli gider kalemleri.
    Her plan: o ayın hafta sayısı × o ay için girilen haftalık tutar. */
 function lowerTr(x){ return String(x||'').trim().toLocaleLowerCase('tr'); }
 function planList(){
-  var L=[{pid:'inv',name:STORE.plan.item,map:STORE.weekly,gtype:'invest'}];
+  var L=[{pid:'inv',name:STORE.plan.item,map:STORE.weekly,gtype:'invest',weekday:STORE.plan.weekday}];
   STORE.wplans.forEach(function(n){
     var k=lowerTr(n); if(!k||k==='inv') return;
     if(!STORE.weeklyX[k]) STORE.weeklyX[k]={};
-    L.push({pid:k,name:n,map:STORE.weeklyX[k],gtype:'cost'});
+    L.push({pid:k,name:n,map:STORE.weeklyX[k],gtype:'cost',weekday:(typeof STORE.wdays[k]==='number'?STORE.wdays[k]:0)});
   });
   return L;
 }
 function planById(pid){ var L=planList(); for(var i=0;i<L.length;i++) if(L[i].pid===pid) return L[i]; return null; }
 function weeklyOf(y,m,pl){ var v=(pl||planList()[0]).map[payKey(y,m)]; return (typeof v==='number')?v:0; }
-function planAmount(y,m,pl){ return planWeeks(y,m)*weeklyOf(y,m,pl); }
+function planAmount(y,m,pl){ return planWeeks(y,m,pl)*weeklyOf(y,m,pl); }
 function planItemIn(groups,pl){
   var name=lowerTr(pl.name);
   for(var i=0;i<groups.length;i++){
@@ -1092,7 +1120,7 @@ function findItem(g,iid){ for(var i=0;i<g.items.length;i++){ if(g.items[i].id===
 /* ---------- web: geri al ----------
    Her değişiklikten önce verinin bir kopyası alınır; "Geri al" / Ctrl+Z son kopyaya döner. */
 var UNDO=[];
-function snapState(){ return JSON.stringify({years:STORE.years,plan:STORE.plan,paydays:STORE.paydays,weekly:STORE.weekly,wplans:STORE.wplans,weeklyX:STORE.weeklyX,showGold:STORE.showGold,goal:STORE.goal,alert:STORE.alert}); }
+function snapState(){ return JSON.stringify({years:STORE.years,plan:STORE.plan,paydays:STORE.paydays,weekly:STORE.weekly,wplans:STORE.wplans,weeklyX:STORE.weeklyX,wdays:STORE.wdays,showGold:STORE.showGold,goal:STORE.goal,alert:STORE.alert}); }
 function webSnap(label){
   UNDO.push({label:label,data:snapState()});
   if(UNDO.length>40) UNDO.shift();
@@ -1101,7 +1129,7 @@ function webUndo(){
   var u=UNDO.pop();
   if(!u){ webToast('Geri alınacak bir şey yok'); return; }
   var d=JSON.parse(u.data);
-  STORE.years=d.years; STORE.plan=d.plan; STORE.paydays=d.paydays; STORE.weekly=d.weekly||{}; STORE.wplans=d.wplans; STORE.weeklyX=d.weeklyX; STORE.showGold=d.showGold; STORE.goal=d.goal; STORE.alert=d.alert;
+  STORE.years=d.years; STORE.plan=d.plan; STORE.paydays=d.paydays; STORE.weekly=d.weekly||{}; STORE.wplans=d.wplans; STORE.weeklyX=d.weeklyX; STORE.wdays=d.wdays; STORE.showGold=d.showGold; STORE.goal=d.goal; STORE.alert=d.alert;
   normalizeStore(); bindYear(view.year);
   touched(); render();
   webToast('Geri alındı: '+u.label,UNDO.length?'Bir adım daha geri al':false);
@@ -1372,12 +1400,14 @@ function buildTableOrdered(){
     var P=STORE.plan, y=state.year, inv=(pl.pid==='inv');
     return '<div style="display:grid;grid-template-columns:'+GRID+';background:#f2f7fb">'+
       '<div style="'+labelBase('background:#f2f7fb;gap:6px;border-bottom:1px solid #dbe8f2')+'">'+
-        '<span style="flex:1;min-width:0;font-size:11.5px;color:#4f7fa3;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Hafta sayısı × haftalık tutar. Haftalar maaş gününden bir sonraki maaşa kadar sayılır (her '+WEEKDAYS[P.weekday]+')'+(inv?'':' — maaş günleri aşağıda, Hisse’nin altındaki “Maaş günü” satırında')+'.">↳ Plan</span>'+
-        (inv?'<button data-act="plan-set" style="background:none;border:1px solid #9fc0d8;color:#4f7fa3;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 5px;cursor:pointer">ayar</button>':'')+
+        '<span style="flex:1;min-width:0;font-size:11.5px;color:#4f7fa3;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Hafta sayısı × haftalık tutar. Maaş gününden bir sonraki maaşa kadar kaç '+WEEKDAYS[pl.weekday]+' varsa o kadar hafta sayılır'+(inv?'':' — maaş günleri aşağıda, Hisse’nin altındaki “Maaş günü” satırında')+'.">↳ Plan</span>'+
+        (inv?'<button data-act="plan-set" style="background:none;border:1px solid #9fc0d8;color:#4f7fa3;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 5px;cursor:pointer">ayar</button>'
+            :'<select data-act="plan-day" data-pid="'+esc(pl.pid)+'" title="Hafta hangi gün bitiyor? O günler sayılır." style="border:1px solid #9fc0d8;background:#f2f7fb;color:#4f7fa3;border-radius:6px;font-size:10.5px;font-weight:700;padding:1px 2px;cursor:pointer;outline:none">'+
+              WD_S.map(function(d,i){ return '<option value="'+i+'"'+(i===pl.weekday?' selected':'')+'>'+d+'</option>'; }).join('')+'</select>')+
       '</div>'+
       MONTHS.map(function(_,m){
-        var w=planWeeks(y,m), amt=planAmount(y,m,pl);
-        return '<div data-act="plan-cell" data-pid="'+esc(pl.pid)+'" data-m="'+m+'" data-plan="'+m+'" title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[P.weekday]+' · tıkla → '+esc(it.name)+'’ye yaz" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:4px;font-size:11.5px;color:#4f7fa3;'+hl(m))+'">'+
+        var w=planWeeks(y,m,pl), amt=planAmount(y,m,pl);
+        return '<div data-act="plan-cell" data-pid="'+esc(pl.pid)+'" data-m="'+m+'" data-plan="'+m+'" title="'+payDate(y,m).toLocaleDateString('tr-TR')+' maaşından sonraki '+w+' '+WEEKDAYS[pl.weekday]+' · tıkla → '+esc(it.name)+'’ye yaz" style="'+numCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;cursor:pointer;gap:4px;font-size:11.5px;color:#4f7fa3;'+hl(m))+'">'+
           '<span style="font-size:10px;color:#93b3cb;pointer-events:none">'+w+'hf</span><span data-pamt style="pointer-events:none">'+(amt?fmtPlain(amt):'')+'</span>'+planStatus(it,m,pl)+'</div>';
       }).join('')+
       '<div data-ptot="'+esc(pl.pid)+'" style="'+totCellBase('background:#f2f7fb;border-bottom:1px solid #dbe8f2;font-size:11.5px;color:#4f7fa3;font-weight:700')+'">'+planTotal(pl)+'</div>'+
@@ -1385,7 +1415,6 @@ function buildTableOrdered(){
   }
 
   /* her ayın maaş günü — tıkla, takvimden seç; arada kaç hafta olduğunu plan hesaplar */
-  var WD_S=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
   function payRow(){
     var y=state.year;
     var any=Object.keys(STORE.paydays).some(function(k){ return k.indexOf(y+'-')===0; });
@@ -1605,7 +1634,7 @@ function setWeekly(m,raw,pid){
   var pi=planItem(pl);
   webSnap((pi?pi.it.name:'haftalık')+' · '+MONTHS[m]+' haftalık');
   if(nv) pl.map[k]=nv; else delete pl.map[k];
-  var amt=planAmount(y,m,pl), msg=MONTHS_L[m]+': '+planWeeks(y,m)+' hafta × '+fmtPlain(nv)+' = '+fmtPlain(amt);
+  var amt=planAmount(y,m,pl), msg=MONTHS_L[m]+': '+planWeeks(y,m,pl)+' hafta × '+fmtPlain(nv)+' = '+fmtPlain(amt);
   if(pi&&amt>0){
     var cur=+pi.it.values[m]||0;
     if(Math.abs(cur-amt)>0.005){
@@ -2801,6 +2830,13 @@ root.addEventListener('change',function(e){
   else if(act==='name') setName(t.getAttribute('data-g'),t.getAttribute('data-i'),t.value);
   else if(act==='opening') setOpening(t.value);
   else if(act==='payday') setPayday(+t.getAttribute('data-m'),t.value);
+  else if(act==='plan-day'){
+    var dp=t.getAttribute('data-pid'), dv=+t.value;
+    webSnap('hafta günü');
+    var dn=planFollow(function(){ STORE.wdays[dp]=dv; });
+    touched(); render();
+    webToast('Haftalar '+WEEKDAYS[dv]+' gününe göre sayılıyor'+(dn?' · '+dn+' ayın tutarı güncellendi':''));
+  }
   else if(act==='weekly') setWeekly(+t.getAttribute('data-m'),t.value,t.getAttribute('data-pid'));
   else if(act==='import'){
     var file=t.files&&t.files[0];
